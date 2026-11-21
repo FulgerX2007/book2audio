@@ -6,9 +6,13 @@ import (
 	"errors"
 	"flag"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
 // newTestApp returns an App with the given commands and its output buffers.
@@ -331,11 +335,114 @@ func TestCommandErrors(t *testing.T) {
 	}
 }
 
-func TestStubReportsNotImplemented(t *testing.T) {
-	err := stub(flag.NewFlagSet("demo", flag.ContinueOnError))(context.Background(), &Invocation{})
-	if !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("stub returned %v, want ErrNotImplemented", err)
+// runBuiltin runs the real book2audio commands and returns the exit code and
+// both output streams.
+func runBuiltin(args ...string) (code int, stdout, stderr string) {
+	var out, errOut bytes.Buffer
+	code = Run(context.Background(), args, &out, &errOut)
+	return code, out.String(), errOut.String()
+}
+
+// writeBook creates a stand-in PDF and returns its path and the workdir to use.
+func writeBook(t *testing.T) (pdf, workdir string) {
+	t.Helper()
+	tmp := t.TempDir()
+	pdf = filepath.Join(tmp, "My Book.pdf")
+	if err := os.WriteFile(pdf, []byte("pdf-content"), 0o644); err != nil {
+		t.Fatal(err)
 	}
+	return pdf, filepath.Join(tmp, "work")
+}
+
+func TestInitCommand(t *testing.T) {
+	t.Run("creates the working folder", func(t *testing.T) {
+		pdf, workdir := writeBook(t)
+
+		code, stdout, stderr := runBuiltin("init", pdf, "--workdir", workdir)
+		if code != ExitOK {
+			t.Fatalf("exit code = %d, want %d; stderr:\n%s", code, ExitOK, stderr)
+		}
+		dir := filepath.Join(workdir, "my-book")
+		if _, err := os.Stat(filepath.Join(dir, "manifest.json")); err != nil {
+			t.Errorf("the working folder was not created: %v", err)
+		}
+		if !strings.Contains(stdout, dir) {
+			t.Errorf("stdout does not name the working folder:\n%s", stdout)
+		}
+	})
+	t.Run("--slug names the folder", func(t *testing.T) {
+		pdf, workdir := writeBook(t)
+
+		if code, _, stderr := runBuiltin("init", pdf, "--workdir", workdir, "--slug", "custom"); code != ExitOK {
+			t.Fatalf("exit code = %d, want %d; stderr:\n%s", code, ExitOK, stderr)
+		}
+		if _, err := os.Stat(filepath.Join(workdir, "custom", "manifest.json")); err != nil {
+			t.Errorf("the folder named by --slug was not created: %v", err)
+		}
+	})
+	t.Run("without a PDF is a usage error", func(t *testing.T) {
+		code, _, stderr := runBuiltin("init")
+		if code != ExitUsage || !strings.Contains(stderr, "Использование: book2audio init") {
+			t.Errorf("exit code = %d, stderr:\n%s", code, stderr)
+		}
+	})
+	t.Run("missing PDF is a runtime error", func(t *testing.T) {
+		code, _, stderr := runBuiltin("init", filepath.Join(t.TempDir(), "absent.pdf"))
+		if code != ExitError || !strings.Contains(stderr, "absent.pdf") {
+			t.Errorf("exit code = %d, stderr:\n%s", code, stderr)
+		}
+	})
+}
+
+func TestStageCommandsOpenTheBook(t *testing.T) {
+	stages := []string{"extract", "chapters", "translate", "synth", "build", "run", "status"}
+
+	t.Run("initialised book reaches the stage", func(t *testing.T) {
+		pdf, workdir := writeBook(t)
+		if code, _, stderr := runBuiltin("init", pdf, "--workdir", workdir); code != ExitOK {
+			t.Fatalf("init failed:\n%s", stderr)
+		}
+		for _, stage := range stages {
+			// Both forms of the argument: the PDF and the working folder.
+			for _, arg := range []string{pdf, filepath.Join(workdir, "my-book")} {
+				code, _, stderr := runBuiltin(stage, arg, "--workdir", workdir)
+				if code != ExitError || !strings.Contains(stderr, ErrNotImplemented.Error()) {
+					t.Errorf("%s %s: exit code = %d, stderr:\n%s", stage, arg, code, stderr)
+				}
+			}
+		}
+	})
+	t.Run("book without a working folder", func(t *testing.T) {
+		pdf, workdir := writeBook(t)
+		code, _, stderr := runBuiltin("extract", pdf, "--workdir", workdir)
+		if code != ExitError || !strings.Contains(stderr, "init") {
+			t.Errorf("exit code = %d, stderr:\n%s", code, stderr)
+		}
+	})
+	t.Run("without an argument is a usage error", func(t *testing.T) {
+		for _, stage := range stages {
+			code, _, stderr := runBuiltin(stage)
+			if code != ExitUsage || !strings.Contains(stderr, "Использование: book2audio "+stage) {
+				t.Errorf("%s: exit code = %d, stderr:\n%s", stage, code, stderr)
+			}
+		}
+	})
+	t.Run("book locked by another process", func(t *testing.T) {
+		pdf, workdir := writeBook(t)
+		if code, _, stderr := runBuiltin("init", pdf, "--workdir", workdir); code != ExitOK {
+			t.Fatalf("init failed:\n%s", stderr)
+		}
+		lock, err := workspace.AcquireLock(filepath.Join(workdir, "my-book"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer lock.Release()
+
+		code, _, stderr := runBuiltin("extract", pdf, "--workdir", workdir)
+		if code != ExitError || !strings.Contains(stderr, workspace.ErrLocked.Error()) {
+			t.Errorf("exit code = %d, stderr:\n%s", code, stderr)
+		}
+	})
 }
 
 func TestVerboseSelectsDebugLogging(t *testing.T) {

@@ -10,6 +10,8 @@ import (
 	"io"
 	"log/slog"
 	"text/tabwriter"
+
+	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
 const prog = "book2audio"
@@ -221,7 +223,7 @@ func commandUsage(w io.Writer, cmd Command, fs *flag.FlagSet) {
 func builtin() []Command {
 	const book = "<book.pdf | work/<slug>>"
 	return []Command{
-		{Name: "init", Args: "<book.pdf>", Summary: "создать рабочую папку книги", Setup: stub},
+		{Name: "init", Args: "<book.pdf>", Summary: "создать рабочую папку книги", Setup: setupInit},
 		{Name: "extract", Args: book, Summary: "извлечь текст по страницам (сканы — через OCR)", Setup: stub},
 		{Name: "chapters", Args: book, Summary: "очистить текст и разбить его на главы", Setup: stub},
 		{Name: "translate", Args: book, Summary: "перевести главы", Setup: stub},
@@ -232,7 +234,55 @@ func builtin() []Command {
 	}
 }
 
-// stub is the Setup of a subcommand that is not implemented yet.
+// setupInit is the Setup of "init".
+func setupInit(fs *flag.FlagSet) RunFunc {
+	slug := fs.String("slug", "", "имя рабочей папки (по умолчанию — из имени файла)")
+	return func(_ context.Context, inv *Invocation) error {
+		if len(inv.Args) != 1 {
+			return &UsageError{Msg: "нужен ровно один аргумент — путь к PDF"}
+		}
+		ws, err := workspace.Init(inv.Args[0], workspace.InitOptions{
+			ConfigPath: inv.ConfigPath,
+			Workdir:    inv.Workdir,
+			Slug:       *slug,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(inv.Stdout, "Рабочая папка: %s\nКонфиг книги:  %s\n", ws.Dir, ws.ConfigPath())
+		return nil
+	}
+}
+
+// openBook opens and locks the working folder named by the single
+// positional argument of a stage subcommand. The caller must Close it.
+func openBook(inv *Invocation) (*workspace.Workspace, error) {
+	if len(inv.Args) != 1 {
+		return nil, &UsageError{Msg: "нужен ровно один аргумент — путь к PDF или к рабочей папке книги"}
+	}
+	ws, err := workspace.Open(inv.Args[0], workspace.OpenOptions{
+		ConfigPath: inv.ConfigPath,
+		Workdir:    inv.Workdir,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := ws.Lock(); err != nil {
+		return nil, err
+	}
+	return ws, nil
+}
+
+// stub is the Setup of a stage subcommand that is not implemented yet: it
+// opens and locks the book like the real stage will, then reports that the
+// stage is missing.
 func stub(*flag.FlagSet) RunFunc {
-	return func(context.Context, *Invocation) error { return ErrNotImplemented }
+	return func(_ context.Context, inv *Invocation) error {
+		ws, err := openBook(inv)
+		if err != nil {
+			return err
+		}
+		defer ws.Close()
+		return ErrNotImplemented
+	}
 }
