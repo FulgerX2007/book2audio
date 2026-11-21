@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"text/tabwriter"
 
+	"github.com/FulgerX2007/book2audio/internal/chapters"
 	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/extract"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
@@ -228,7 +229,7 @@ func Builtin(runner execx.Runner) []Command {
 	return []Command{
 		{Name: "init", Args: "<book.pdf>", Summary: "создать рабочую папку книги", Setup: setupInit},
 		{Name: "extract", Args: book, Summary: "извлечь текст по страницам (сканы — через OCR)", Setup: setupExtract(runner)},
-		{Name: "chapters", Args: book, Summary: "очистить текст и разбить его на главы", Setup: stub},
+		{Name: "chapters", Args: book, Summary: "очистить текст и разбить его на главы", Setup: setupChapters},
 		{Name: "translate", Args: book, Summary: "перевести главы", Setup: stub},
 		{Name: "synth", Args: book, Summary: "озвучить переведённые главы", Setup: stub},
 		{Name: "build", Args: book, Summary: "собрать аудиокнигу (M4B или MP3)", Setup: stub},
@@ -272,6 +273,28 @@ func setupExtract(runner execx.Runner) func(*flag.FlagSet) RunFunc {
 				res.Pages, res.Extracted, res.OCR, res.Failed)
 			return err
 		}
+	}
+}
+
+// setupChapters is the Setup of "chapters".
+func setupChapters(*flag.FlagSet) RunFunc {
+	return func(ctx context.Context, inv *Invocation) error {
+		ws, err := openBook(inv)
+		if err != nil {
+			return err
+		}
+		defer ws.Close()
+
+		res, err := chapters.Run(ctx, ws, inv.Log)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(inv.Stdout, "Глав: %d, записано сейчас: %d, оставлено с ручными правками: %d, страниц оглавления пропущено: %d\n",
+			res.Chapters, res.Written, res.Kept, res.TOCPages)
+		if res.Manual {
+			fmt.Fprintln(inv.Stdout, "Границы глав взяты из chapters.json, изменённого вручную.")
+		}
+		return nil
 	}
 }
 

@@ -398,7 +398,7 @@ func TestInitCommand(t *testing.T) {
 func TestStageCommandsOpenTheBook(t *testing.T) {
 	stages := []string{"extract", "chapters", "translate", "synth", "build", "run", "status"}
 	// Stages that are still stubs; the list shrinks as stages are implemented.
-	stubs := []string{"chapters", "translate", "synth", "build", "run", "status"}
+	stubs := []string{"translate", "synth", "build", "run", "status"}
 
 	t.Run("initialised book reaches the stage", func(t *testing.T) {
 		pdf, workdir := writeBook(t)
@@ -528,6 +528,18 @@ func TestExtractCommand(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(workdir, "my-book", "01-pages", "p0002.txt"))
 	if err != nil || string(got) != "second page"+filler {
 		t.Errorf("page 2 = %q, %v", got, err)
+	}
+
+	// The next stage works on the extracted pages.
+	stdout.Reset()
+	if code := app.Run(context.Background(), []string{"chapters", pdf, "--workdir", workdir}); code != ExitOK {
+		t.Fatalf("chapters: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Глав: 1, записано сейчас: 1") {
+		t.Errorf("stdout lacks the chapters summary:\n%s", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(workdir, "my-book", "02-chapters", "ch01.md")); err != nil {
+		t.Errorf("the chapter file was not written: %v", err)
 	}
 
 	// A failing tool makes the subcommand fail.

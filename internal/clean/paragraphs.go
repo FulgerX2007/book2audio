@@ -21,7 +21,7 @@ const shortLine = 0.85
 //   - at a page break, unless the last line of the page stops in the middle
 //     of a sentence — then the paragraph continues on the next page.
 func Paragraphs(lines []Line) []string {
-	width := usualWidth(lines)
+	width := UsualWidth(lines)
 
 	var paragraphs []string
 	var cur []string
@@ -52,9 +52,9 @@ func Paragraphs(lines []Line) []string {
 	return paragraphs
 }
 
-// usualWidth estimates the width of a full line: the 90th percentile of the
+// UsualWidth estimates the width of a full line: the 90th percentile of the
 // line lengths, in characters.
-func usualWidth(lines []Line) int {
+func UsualWidth(lines []Line) int {
 	var lengths []int
 	for _, line := range lines {
 		if line.Text != "" {
