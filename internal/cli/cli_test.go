@@ -12,7 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/execx"
+	"github.com/FulgerX2007/book2audio/internal/translate"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
@@ -36,7 +38,7 @@ func TestBuiltinCommands(t *testing.T) {
 	want := []string{"init", "extract", "chapters", "translate", "synth", "build", "run", "status"}
 
 	var got []string
-	for _, cmd := range Builtin(execx.NewFakeRunner()) {
+	for _, cmd := range Builtin(DefaultDeps()) {
 		got = append(got, cmd.Name)
 		if cmd.Setup == nil {
 			t.Errorf("command %q has no Setup", cmd.Name)
@@ -398,7 +400,7 @@ func TestInitCommand(t *testing.T) {
 func TestStageCommandsOpenTheBook(t *testing.T) {
 	stages := []string{"extract", "chapters", "translate", "synth", "build", "run", "status"}
 	// Stages that are still stubs; the list shrinks as stages are implemented.
-	stubs := []string{"translate", "synth", "build", "run", "status"}
+	stubs := []string{"synth", "build", "run", "status"}
 
 	t.Run("initialised book reaches the stage", func(t *testing.T) {
 		pdf, workdir := writeBook(t)
@@ -513,7 +515,11 @@ func TestExtractCommand(t *testing.T) {
 	// Each page is long enough to count as having a text layer (no OCR).
 	const filler = " — a page with enough plain text to have a real text layer\n"
 	fake.Stub("pdftotext", []byte("first page"+filler+"\fsecond page"+filler+"\f"), nil)
-	app, stdout, stderr := newTestApp(Builtin(fake)...)
+	tr := &translate.FakeTranslator{}
+	app, stdout, stderr := newTestApp(Builtin(Deps{
+		Runner:        fake,
+		NewTranslator: func(config.Translate) (translate.Translator, error) { return tr, nil },
+	})...)
 
 	if code := app.Run(context.Background(), []string{"init", pdf, "--workdir", workdir}); code != ExitOK {
 		t.Fatalf("init failed:\n%s", stderr.String())
@@ -540,6 +546,30 @@ func TestExtractCommand(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workdir, "my-book", "02-chapters", "ch01.md")); err != nil {
 		t.Errorf("the chapter file was not written: %v", err)
+	}
+
+	// Translation needs a model in the book config.
+	if code := app.Run(context.Background(), []string{"translate", pdf, "--workdir", workdir}); code != ExitError ||
+		!strings.Contains(stderr.String(), "translate.model") {
+		t.Errorf("translate without a model: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	bookConfig := filepath.Join(workdir, "my-book", "config.yaml")
+	if err := os.WriteFile(bookConfig, []byte("translate:\n  model: test-model\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if code := app.Run(context.Background(), []string{"translate", pdf, "--workdir", workdir, "--chapter", "1"}); code != ExitOK {
+		t.Fatalf("translate: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "переведено сейчас: 1") || tr.Calls() != 1 {
+		t.Errorf("translator calls = %d; stdout:\n%s", tr.Calls(), stdout.String())
+	}
+	translated, err := os.ReadFile(filepath.Join(workdir, "my-book", "03-translated", "ch01.ru.md"))
+	if err != nil || !strings.Contains(string(translated), translate.FakePrefix+"first page") {
+		t.Errorf("translated chapter = %q, %v", translated, err)
+	}
+	if code := app.Run(context.Background(), []string{"translate", pdf, "--workdir", workdir, "--chapter", "7"}); code != ExitError {
+		t.Errorf("translate of an unknown chapter: exit code = %d, want %d", code, ExitError)
 	}
 
 	// A failing tool makes the subcommand fail.

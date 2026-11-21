@@ -12,8 +12,11 @@ import (
 	"text/tabwriter"
 
 	"github.com/FulgerX2007/book2audio/internal/chapters"
+	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/extract"
+	"github.com/FulgerX2007/book2audio/internal/pipeline"
+	"github.com/FulgerX2007/book2audio/internal/translate"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
@@ -75,7 +78,7 @@ type App struct {
 
 // New returns an App with the built-in book2audio commands.
 func New(stdout, stderr io.Writer) *App {
-	return &App{Commands: Builtin(execx.OSRunner{}), Stdout: stdout, Stderr: stderr}
+	return &App{Commands: Builtin(DefaultDeps()), Stdout: stdout, Stderr: stderr}
 }
 
 // Run parses args (without the program name), runs the selected built-in
@@ -222,15 +225,29 @@ func commandUsage(w io.Writer, cmd Command, fs *flag.FlagSet) {
 	fs.SetOutput(io.Discard)
 }
 
-// Builtin returns the book2audio subcommands in pipeline order. External
-// tools are run through runner.
-func Builtin(runner execx.Runner) []Command {
+// Deps are the outside-world dependencies of the built-in commands; tests
+// replace them with fakes.
+type Deps struct {
+	// Runner runs the external tools.
+	Runner execx.Runner
+	// NewTranslator creates the translation backend of a book.
+	NewTranslator func(cfg config.Translate) (translate.Translator, error)
+}
+
+// DefaultDeps returns the real dependencies: processes and network.
+func DefaultDeps() Deps {
+	return Deps{Runner: execx.OSRunner{}, NewTranslator: translate.New}
+}
+
+// Builtin returns the book2audio subcommands in pipeline order.
+func Builtin(deps Deps) []Command {
+	runner := deps.Runner
 	const book = "<book.pdf | work/<slug>>"
 	return []Command{
 		{Name: "init", Args: "<book.pdf>", Summary: "создать рабочую папку книги", Setup: setupInit},
 		{Name: "extract", Args: book, Summary: "извлечь текст по страницам (сканы — через OCR)", Setup: setupExtract(runner)},
 		{Name: "chapters", Args: book, Summary: "очистить текст и разбить его на главы", Setup: setupChapters},
-		{Name: "translate", Args: book, Summary: "перевести главы", Setup: stub},
+		{Name: "translate", Args: book, Summary: "перевести главы", Setup: setupTranslate(deps)},
 		{Name: "synth", Args: book, Summary: "озвучить переведённые главы", Setup: stub},
 		{Name: "build", Args: book, Summary: "собрать аудиокнигу (M4B или MP3)", Setup: stub},
 		{Name: "run", Args: book, Summary: "выполнить все этапы подряд", Setup: stub},
@@ -295,6 +312,32 @@ func setupChapters(*flag.FlagSet) RunFunc {
 			fmt.Fprintln(inv.Stdout, "Границы глав взяты из chapters.json, изменённого вручную.")
 		}
 		return nil
+	}
+}
+
+// setupTranslate is the Setup of "translate".
+func setupTranslate(deps Deps) func(*flag.FlagSet) RunFunc {
+	return func(fs *flag.FlagSet) RunFunc {
+		chapter := fs.Int("chapter", pipeline.AllChapters, "перевести только главу с этим номером")
+		return func(ctx context.Context, inv *Invocation) error {
+			ws, err := openBook(inv)
+			if err != nil {
+				return err
+			}
+			defer ws.Close()
+
+			if err := ws.Config.RequireTranslate(); err != nil {
+				return err
+			}
+			tr, err := deps.NewTranslator(ws.Config.Translate)
+			if err != nil {
+				return err
+			}
+			res, err := pipeline.Translate(ctx, ws, tr, inv.Log, pipeline.TranslateOptions{Chapter: *chapter})
+			fmt.Fprintf(inv.Stdout, "Глав: %d, фрагментов: %d, переведено сейчас: %d, с ошибкой: %d, собрано глав: %d, оставлено с ручными правками: %d\n",
+				res.Chapters, res.Chunks, res.Translated, res.Failed, res.Assembled, res.Kept)
+			return err
+		}
 	}
 }
 
