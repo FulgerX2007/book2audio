@@ -138,7 +138,7 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 			if ctx.Err() != nil {
 				return ctx.Err() // interrupted, not a failure of this segment
 			}
-			log.Warn("сегмент не озвучен", "chapter", unit.Chapter, "err", synthErr)
+			log.Warn("сегмент не озвучен", "chapter", unit.Chapter, "err", synthErr, "text", preview(job.text))
 			mu.Lock()
 			res.Failed++
 			mu.Unlock()
@@ -281,6 +281,15 @@ func LoadSegments(ws *workspace.Workspace, n int) ([]SegmentRef, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return refs, nil
+}
+
+// preview returns the start of a segment text for a log message.
+func preview(text string) string {
+	const maxRunes = 80
+	if r := []rune(text); len(r) > maxRunes {
+		return string(r[:maxRunes]) + "…"
+	}
+	return text
 }
 
 // splitJobs deals the jobs into at most n parts of nearly equal size,

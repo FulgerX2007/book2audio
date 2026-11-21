@@ -53,7 +53,8 @@ def main():
             os.replace(tmp, out)
             print("ok", flush=True)
         except Exception as exc:  # one bad segment must not stop the rest
-            print("err " + " ".join(str(exc).split()), flush=True)
+            # Some Silero errors carry no message: always name the error type.
+            print("err " + " ".join((type(exc).__name__ + ": " + str(exc)).split()), flush=True)
 
 
 if __name__ == "__main__":

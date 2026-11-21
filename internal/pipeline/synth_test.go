@@ -646,6 +646,16 @@ func TestSynthBatchBackendFailures(t *testing.T) {
 	})
 }
 
+func TestPreview(t *testing.T) {
+	if got := preview("короткий текст"); got != "короткий текст" {
+		t.Errorf("preview of a short text = %q", got)
+	}
+	long := strings.Repeat("я", 200)
+	if got := preview(long); got != strings.Repeat("я", 80)+"…" {
+		t.Errorf("preview of a long text has %d runes, want 80 and an ellipsis", len([]rune(got)))
+	}
+}
+
 func TestSplitJobs(t *testing.T) {
 	jobs := make([]synthJob, 7)
 	for i := range jobs {
