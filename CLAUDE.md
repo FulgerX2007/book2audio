@@ -50,7 +50,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
   | chapters | chapter | title, cleaned source lines, `clean.RulesVersion` |
   | translate | chunk (ID = hash) | chunk text, glossary terms that occur in it, backend, model, languages, temperature, `translate.PromptHash()` |
   | translated | chapter file | ordered chunk hashes |
-  | synth | segment (ID = hash) | segment text, backend, command, args before `{out}` is substituted |
+  | synth | segment (ID = hash) | segment text, backend, command, args before `{out}` is substituted; `accent_command` and its args when set |
   | build | chapter WAV | ordered segment hashes with paragraph flags, pause length |
   | build | output file | chapter hashes and titles, format, bitrate, tags |
 

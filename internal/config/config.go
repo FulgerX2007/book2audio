@@ -90,6 +90,12 @@ type TTS struct {
 	Args         []string `yaml:"args"`          // must contain OutPlaceholder
 	SegmentChars int      `yaml:"segment_chars"` // a longer paragraph is split by sentences
 	Workers      int      `yaml:"workers"`
+
+	// AccentCommand is an optional external command that puts stress marks
+	// into the text before it is synthesised. It receives one segment per
+	// line on standard input and must print the same number of lines.
+	AccentCommand string   `yaml:"accent_command"`
+	AccentArgs    []string `yaml:"accent_args"`
 }
 
 // Audio configures the final assembly.
@@ -275,6 +281,9 @@ func (c Config) Validate() error {
 	}
 	if len(c.TTS.Args) > 0 && !c.TTS.hasOutPlaceholder() {
 		p.addf("tts.args", "нет подстановки %s для пути выходного файла", OutPlaceholder)
+	}
+	if len(c.TTS.AccentArgs) > 0 && strings.TrimSpace(c.TTS.AccentCommand) == "" {
+		p.addf("tts.accent_args", "заданы аргументы, но не задана команда tts.accent_command")
 	}
 	if c.TTS.SegmentChars < 100 {
 		p.addf("tts.segment_chars", "должно быть не меньше 100")

@@ -125,7 +125,7 @@ func runStage(ctx context.Context, ws *workspace.Workspace, deps Deps, log *slog
 		if err != nil {
 			return "", err
 		}
-		res, err := Synth(ctx, ws, syn, log, SynthOptions{Chapter: AllChapters})
+		res, err := Synth(ctx, ws, syn, log, SynthOptions{Chapter: AllChapters, Runner: deps.Runner})
 		return fmt.Sprintf("сегментов %d, озвучено сейчас %d, с ошибкой %d",
 			res.Segments, res.Synthesized, res.Failed), err
 	case StageBuild:

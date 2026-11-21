@@ -348,7 +348,7 @@ func setupSynth(deps Deps) func(*flag.FlagSet) RunFunc {
 			if err != nil {
 				return err
 			}
-			res, err := pipeline.Synth(ctx, ws, syn, inv.Log, pipeline.SynthOptions{Chapter: *chapter})
+			res, err := pipeline.Synth(ctx, ws, syn, inv.Log, pipeline.SynthOptions{Chapter: *chapter, Runner: deps.Runner})
 			fmt.Fprintf(inv.Stdout, "Глав: %d, сегментов: %d, озвучено сейчас: %d, с ошибкой: %d\n",
 				res.Chapters, res.Segments, res.Synthesized, res.Failed)
 			return err

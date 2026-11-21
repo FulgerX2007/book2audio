@@ -176,6 +176,7 @@ func TestValidate(t *testing.T) {
 		{"unknown tts backend", func(c *Config) { c.TTS.Backend = "espeak" }, "tts.backend"},
 		{"empty tts command", func(c *Config) { c.TTS.Command = "" }, "tts.command"},
 		{"tts args without placeholder", func(c *Config) { c.TTS.Args = []string{"--model", "v.onnx"} }, "tts.args"},
+		{"accent args without a command", func(c *Config) { c.TTS.AccentArgs = []string{"--fast"} }, "tts.accent_args"},
 		{"segment_chars too small", func(c *Config) { c.TTS.SegmentChars = 10 }, "tts.segment_chars"},
 		{"no tts workers", func(c *Config) { c.TTS.Workers = 0 }, "tts.workers"},
 		{"unknown audio format", func(c *Config) { c.Audio.Format = "ogg" }, "audio.format"},
@@ -208,6 +209,7 @@ func TestValidateAcceptsBoundaryValues(t *testing.T) {
 	cfg.Translate.MaxRetries = 0
 	cfg.Translate.BaseURL = "https://api.example.test"
 	cfg.TTS.Args = []string{"--output_file={out}"}
+	cfg.TTS.AccentCommand = "accent.py" // a command without arguments is fine
 	cfg.Audio.ParagraphPauseMS = 0
 
 	if err := cfg.Validate(); err != nil {

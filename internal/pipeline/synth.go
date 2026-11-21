@@ -8,10 +8,12 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/FulgerX2007/book2audio/internal/chapters"
 	"github.com/FulgerX2007/book2audio/internal/chunk"
+	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/speech"
 	"github.com/FulgerX2007/book2audio/internal/tts"
 	"github.com/FulgerX2007/book2audio/internal/workpool"
@@ -25,6 +27,9 @@ const StageSynth = "synth"
 // SynthOptions select what the synth stage works on.
 type SynthOptions struct {
 	Chapter int // chapter number, or AllChapters
+	// Runner runs tts.accent_command; it is needed only when that command
+	// is configured.
+	Runner execx.Runner
 }
 
 // SynthResult summarises a run of the synth stage.
@@ -121,6 +126,9 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 	if len(jobs) > 0 {
 		log.Info("озвучка", "segments", len(jobs), "workers", ws.Config.TTS.Workers)
 	}
+	if err := accentJobs(ctx, ws, opts.Runner, jobs, log); err != nil {
+		return res, err
+	}
 	var mu sync.Mutex // guards res
 	err = workpool.Run(ctx, ws.Config.TTS.Workers, jobs, func(ctx context.Context, job synthJob) error {
 		unit := workspace.Unit{In: job.hash, Chapter: chapters.UnitID(job.chapter)}
@@ -178,7 +186,57 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 func segmentHash(ws *workspace.Workspace, text string) string {
 	cfg := ws.Config.TTS
 	parts := append([]string{StageSynth, text, cfg.Backend, cfg.Command}, cfg.Args...)
+	// The stress marks change what is spoken, so the accent command is part
+	// of the hash. Without one the hash is what it was before the option
+	// existed, and audio made earlier stays valid.
+	if cfg.AccentCommand != "" {
+		parts = append(parts, "accent", cfg.AccentCommand)
+		parts = append(parts, cfg.AccentArgs...)
+	}
 	return workspace.HashStrings(parts...)
+}
+
+// accentJobs passes the texts of the jobs through tts.accent_command, which
+// puts stress marks into them. The command is started once for all
+// segments, because such tools load a language model at start-up: it gets
+// one segment per line and must return the same number of lines.
+func accentJobs(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, jobs []synthJob, log *slog.Logger) error {
+	cfg := ws.Config.TTS
+	if cfg.AccentCommand == "" || len(jobs) == 0 {
+		return nil
+	}
+	if runner == nil {
+		return errors.New("tts.accent_command задана, но запуск внешних команд не настроен")
+	}
+	var input strings.Builder
+	for _, job := range jobs {
+		// A segment is a single line already; make sure of it, since the
+		// protocol is line-based.
+		input.WriteString(strings.Join(strings.Fields(job.text), " "))
+		input.WriteByte('\n')
+	}
+
+	log.Info("расстановка ударений", "segments", len(jobs), "command", cfg.AccentCommand)
+	out, err := runner.Run(ctx, execx.Cmd{Name: cfg.AccentCommand, Args: cfg.AccentArgs, Stdin: strings.NewReader(input.String())})
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("расстановка ударений (tts.accent_command): %w", err)
+	}
+	lines := strings.Split(strings.TrimRight(strings.ReplaceAll(string(out), "\r\n", "\n"), "\n"), "\n")
+	if len(lines) != len(jobs) {
+		return fmt.Errorf("расстановка ударений: команда %s вернула строк: %d, а сегментов %d — на каждую строку ввода нужна одна строка вывода",
+			cfg.AccentCommand, len(lines), len(jobs))
+	}
+	for i, line := range lines {
+		if line = strings.TrimSpace(line); line == "" {
+			return fmt.Errorf("расстановка ударений: команда %s вернула пустую строку для сегмента %d", cfg.AccentCommand, i+1)
+		} else {
+			jobs[i].text = line
+		}
+	}
+	return nil
 }
 
 // LoadSegments reads chNN.segments.json of chapter n.
