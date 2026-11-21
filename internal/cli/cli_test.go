@@ -401,7 +401,7 @@ func TestInitCommand(t *testing.T) {
 func TestStageCommandsOpenTheBook(t *testing.T) {
 	stages := []string{"extract", "chapters", "translate", "synth", "build", "run", "status"}
 	// Stages that are still stubs; the list shrinks as stages are implemented.
-	stubs := []string{"build", "run", "status"}
+	stubs := []string{"run", "status"}
 
 	t.Run("initialised book reaches the stage", func(t *testing.T) {
 		pdf, workdir := writeBook(t)
@@ -590,6 +590,19 @@ func TestExtractCommand(t *testing.T) {
 	// The chapter is a title and one paragraph: two segments.
 	if !strings.Contains(stdout.String(), "сегментов: 2, озвучено сейчас: 2") || syn.Calls() != 2 {
 		t.Errorf("synthesizer calls = %d; stdout:\n%s", syn.Calls(), stdout.String())
+	}
+
+	// The audiobook is encoded by (a fake) ffmpeg.
+	fake.Handle("ffmpeg", func(call execx.Call) ([]byte, error) {
+		return nil, os.WriteFile(call.Args[len(call.Args)-1], call.Input, 0o644)
+	})
+	stdout.Reset()
+	if code := app.Run(context.Background(), []string{"build", pdf, "--workdir", workdir}); code != ExitOK {
+		t.Fatalf("build: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	book := filepath.Join(workdir, "my-book", "out", "my-book.m4b")
+	if _, err := os.Stat(book); err != nil || !strings.Contains(stdout.String(), book) {
+		t.Errorf("the audiobook %s: %v; stdout:\n%s", book, err, stdout.String())
 	}
 
 	// A failing tool makes the subcommand fail.

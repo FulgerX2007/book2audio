@@ -252,7 +252,7 @@ func Builtin(deps Deps) []Command {
 		{Name: "chapters", Args: book, Summary: "очистить текст и разбить его на главы", Setup: setupChapters},
 		{Name: "translate", Args: book, Summary: "перевести главы", Setup: setupTranslate(deps)},
 		{Name: "synth", Args: book, Summary: "озвучить переведённые главы", Setup: setupSynth(deps)},
-		{Name: "build", Args: book, Summary: "собрать аудиокнигу (M4B или MP3)", Setup: stub},
+		{Name: "build", Args: book, Summary: "собрать аудиокнигу (M4B или MP3)", Setup: setupBuild(deps)},
 		{Name: "run", Args: book, Summary: "выполнить все этапы подряд", Setup: stub},
 		{Name: "status", Args: book, Summary: "показать состояние книги по этапам", Setup: stub},
 	}
@@ -366,6 +366,29 @@ func setupSynth(deps Deps) func(*flag.FlagSet) RunFunc {
 			fmt.Fprintf(inv.Stdout, "Глав: %d, сегментов: %d, озвучено сейчас: %d, с ошибкой: %d\n",
 				res.Chapters, res.Segments, res.Synthesized, res.Failed)
 			return err
+		}
+	}
+}
+
+// setupBuild is the Setup of "build".
+func setupBuild(deps Deps) func(*flag.FlagSet) RunFunc {
+	return func(*flag.FlagSet) RunFunc {
+		return func(ctx context.Context, inv *Invocation) error {
+			ws, err := openBook(inv)
+			if err != nil {
+				return err
+			}
+			defer ws.Close()
+
+			res, err := pipeline.Build(ctx, ws, deps.Runner, inv.Log)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(inv.Stdout, "Глав: %d, склеено сейчас: %d, закодировано файлов сейчас: %d\n", res.Chapters, res.Joined, res.Encoded)
+			for _, out := range res.Outputs {
+				fmt.Fprintln(inv.Stdout, out)
+			}
+			return nil
 		}
 	}
 }
