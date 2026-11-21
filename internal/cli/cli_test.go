@@ -510,7 +510,9 @@ func TestExtractCommand(t *testing.T) {
 	pdf, workdir := writeBook(t)
 	fake := execx.NewFakeRunner()
 	fake.Stub("pdfinfo", []byte("Title:   Demo\nPages:   2\n"), nil)
-	fake.Stub("pdftotext", []byte("first page\n\fsecond page\n\f"), nil)
+	// Each page is long enough to count as having a text layer (no OCR).
+	const filler = " — a page with enough plain text to have a real text layer\n"
+	fake.Stub("pdftotext", []byte("first page"+filler+"\fsecond page"+filler+"\f"), nil)
 	app, stdout, stderr := newTestApp(Builtin(fake)...)
 
 	if code := app.Run(context.Background(), []string{"init", pdf, "--workdir", workdir}); code != ExitOK {
@@ -524,7 +526,7 @@ func TestExtractCommand(t *testing.T) {
 		t.Errorf("stdout lacks the summary:\n%s", stdout.String())
 	}
 	got, err := os.ReadFile(filepath.Join(workdir, "my-book", "01-pages", "p0002.txt"))
-	if err != nil || string(got) != "second page\n" {
+	if err != nil || string(got) != "second page"+filler {
 		t.Errorf("page 2 = %q, %v", got, err)
 	}
 

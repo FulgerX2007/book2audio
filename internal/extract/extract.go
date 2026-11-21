@@ -10,9 +10,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/FulgerX2007/book2audio/internal/execx"
+	"github.com/FulgerX2007/book2audio/internal/workpool"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
@@ -80,23 +82,71 @@ func Run(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, log 
 		if err != nil {
 			return res, err
 		}
+		// save writes the text of page n and records the unit as done.
+		save := func(n int, text string, ocr bool) error {
+			out := ws.PagePath(n)
+			if err := workspace.WriteFileAtomic(out, []byte(text), 0o644); err != nil {
+				return fmt.Errorf("страница %d: %w", n, err)
+			}
+			return ws.Manifest.MarkDone(Stage, UnitID(n), workspace.Unit{In: hashes[n], OCR: ocr}, out)
+		}
+
+		// Pages with a text layer are written first, so they are kept even
+		// when OCR cannot run at all.
+		var scanned []int
 		for n := 1; n <= info.Pages; n++ {
-			in, ok := hashes[n]
-			if !ok {
+			if _, ok := hashes[n]; !ok {
 				continue
 			}
 			if err := ctx.Err(); err != nil {
 				return res, err
 			}
-			unit := workspace.Unit{In: in}
-			out := ws.PagePath(n)
-			if err := workspace.WriteFileAtomic(out, []byte(pages[n-1]), 0o644); err != nil {
-				return res, fmt.Errorf("страница %d: %w", n, err)
+			if needsOCR(pages[n-1], ws.Config.Extract.OCRMinChars) {
+				scanned = append(scanned, n)
+				continue
 			}
-			if err := ws.Manifest.MarkDone(Stage, UnitID(n), unit, out); err != nil {
+			if err := save(n, pages[n-1], false); err != nil {
 				return res, err
 			}
 			res.Extracted++
+		}
+
+		if len(scanned) > 0 {
+			log.Info("распознавание страниц без текстового слоя", "pages", len(scanned), "lang", ocrLang)
+			if err := checkOCRLang(ctx, runner, ocrLang); err != nil {
+				return res, err
+			}
+			tmpDir, err := os.MkdirTemp("", "book2audio-ocr-")
+			if err != nil {
+				return res, err
+			}
+			defer os.RemoveAll(tmpDir)
+
+			var mu sync.Mutex // guards res
+			err = workpool.Run(ctx, ws.Config.Extract.OCRWorkers, scanned, func(ctx context.Context, n int) error {
+				text, err := ocrPage(ctx, runner, ws.PDF, n, ocrLang, ws.Config.Extract.OCRDPI, tmpDir)
+				if err != nil {
+					if ctx.Err() != nil {
+						return ctx.Err() // interrupted, not a failure of this page
+					}
+					log.Warn("страница не распознана", "page", n, "err", err)
+					mu.Lock()
+					res.Failed++
+					mu.Unlock()
+					return ws.Manifest.MarkFailed(Stage, UnitID(n), workspace.Unit{In: hashes[n], OCR: true}, ws.PagePath(n), err)
+				}
+				if err := save(n, text, true); err != nil {
+					return err
+				}
+				mu.Lock()
+				res.Extracted++
+				res.OCR++
+				mu.Unlock()
+				return nil
+			})
+			if err != nil {
+				return res, err
+			}
 		}
 	}
 
