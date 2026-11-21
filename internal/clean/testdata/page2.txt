@@ -1,0 +1,25 @@
+A Short Field Guide to Lighthouses
+
+This guide was written for the tests of a small program. It
+describes an imaginary lighthouse and the people who look
+after it. Nothing in it is meant as advice for real keepers, and
+every name in it is invented.
+The introduction is short on purpose. It stands before the first
+heading, so a careful reader of the file should treat it as a part
+of its own.
+
+Chapter 1: The Lamp Room
+The lamp room sits at the top of ninety-two steps. Every
+evening the keeper climbs them with a can of oil, a clean cloth
+and a well-thumbed note-book. The glass is wiped first, because salt gathers on it during the day and a dull lens throws
+a dull beam.
+When the wick is trimmed the keeper lights it and waits. The
+flame needs a quarter of an hour to settle, and nobody hurries
+it. Only then is the great lens set turning, slowly, on its bed of
+rollers.
+On clear nights the beam can be seen from the far side of the
+bay. Fishing crews say that it looks like a patient hand, waving
+them home.
+
+2
+
