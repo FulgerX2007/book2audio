@@ -123,6 +123,19 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 		return res, fmt.Errorf("главы %d нет в chapters.json", opts.Chapter)
 	}
 
+	// The segment lists are written before any audio is made: status can
+	// then show "done of total" while the stage is running, and build
+	// never joins a chapter from the list of an older text.
+	for n, refs := range refsByChapter {
+		data, err := json.MarshalIndent(refs, "", "  ")
+		if err != nil {
+			return res, err
+		}
+		if err := workspace.WriteFileAtomic(ws.SegmentsJSONPath(n), append(data, '\n'), 0o644); err != nil {
+			return res, err
+		}
+	}
+
 	if len(jobs) > 0 {
 		log.Info("озвучка", "segments", len(jobs), "workers", ws.Config.TTS.Workers)
 	}
@@ -185,16 +198,6 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 	}
 	if err != nil {
 		return res, err
-	}
-
-	for n, refs := range refsByChapter {
-		data, err := json.MarshalIndent(refs, "", "  ")
-		if err != nil {
-			return res, err
-		}
-		if err := workspace.WriteFileAtomic(ws.SegmentsJSONPath(n), append(data, '\n'), 0o644); err != nil {
-			return res, err
-		}
 	}
 
 	// Units of segments that are gone are dropped only on a full run: with

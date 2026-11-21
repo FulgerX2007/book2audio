@@ -125,6 +125,11 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 		}
 		res.Chapters++
 		res.Chunks += len(plan.chunks)
+		// Written before any chunk is translated, so that status can show
+		// "done of total" for the chapter while the stage is running.
+		if err := writeChunkList(ws, plan); err != nil {
+			return res, err
+		}
 		for i, c := range plan.chunks {
 			hash := plan.hashes[i]
 			if queued[hash] {
@@ -324,15 +329,26 @@ func checkTranslation(source, translated string) error {
 	return nil
 }
 
+// writeChunkList writes chNN.chunks.json: the chunks of the chapter in order.
+func writeChunkList(ws *workspace.Workspace, plan chapterPlan) error {
+	refs := make([]chunkRef, len(plan.chunks))
+	for i, c := range plan.chunks {
+		refs[i] = chunkRef{Hash: plan.hashes[i], Continues: c.Continues}
+	}
+	data, err := json.MarshalIndent(refs, "", "  ")
+	if err != nil {
+		return err
+	}
+	return workspace.WriteFileAtomic(ws.ChunksJSONPath(plan.n), append(data, '\n'), 0o644)
+}
+
 // assembleChapter writes chNN.chunks.json and, when every chunk of the
 // chapter is translated, the chapter file chNN.ru.md. A chapter file edited
 // by hand is kept.
 func assembleChapter(ws *workspace.Workspace, plan chapterPlan, log *slog.Logger) (written, kept bool, err error) {
-	refs := make([]chunkRef, len(plan.chunks))
 	texts := make([]string, len(plan.chunks))
 	complete := true
-	for i, c := range plan.chunks {
-		refs[i] = chunkRef{Hash: plan.hashes[i], Continues: c.Continues}
+	for i := range plan.chunks {
 		u, ok := ws.Manifest.Unit(StageTranslate, plan.hashes[i])
 		if !ok || u.Status != workspace.StatusDone {
 			complete = false
@@ -344,11 +360,7 @@ func assembleChapter(ws *workspace.Workspace, plan chapterPlan, log *slog.Logger
 		}
 		texts[i] = string(data)
 	}
-	data, err := json.MarshalIndent(refs, "", "  ")
-	if err != nil {
-		return false, false, err
-	}
-	if err := workspace.WriteFileAtomic(ws.ChunksJSONPath(plan.n), append(data, '\n'), 0o644); err != nil {
+	if err := writeChunkList(ws, plan); err != nil {
 		return false, false, err
 	}
 	if !complete {

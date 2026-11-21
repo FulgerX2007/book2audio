@@ -449,11 +449,10 @@ func TestStatusChapters(t *testing.T) {
 		}
 	})
 
-	t.Run("while a stage is running the totals are unknown", func(t *testing.T) {
+	t.Run("while a stage is running the totals are already known", func(t *testing.T) {
 		ws := emptyBook(t)
 		f := newFakes()
-		// Interrupt the translation: the chunk lists are not written yet,
-		// only the units finished so far are in the manifest.
+		// Interrupt the translation, as status sees it from another window.
 		ctx, cancel := context.WithCancel(context.Background())
 		f.tr.Fail = func(translate.Request) error {
 			if f.tr.Calls() >= 2 {
@@ -468,20 +467,21 @@ func TestStatusChapters(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		done := 0
+		done, total := 0, 0
 		for _, ch := range st.Chapters {
-			if ch.Chunks != 0 || ch.Translated {
-				t.Errorf("chapter %d = %+v, want an unknown total", ch.N, ch)
+			if ch.Chunks == 0 || ch.Translated {
+				t.Errorf("chapter %d = %+v, want a known total and no assembled translation", ch.N, ch)
 			}
 			done += ch.ChunksDone
+			total += ch.Chunks
 		}
-		if done == 0 {
-			t.Error("no finished chunk is counted")
+		if done == 0 || done >= total {
+			t.Errorf("done = %d of %d, want a partial count", done, total)
 		}
 		var out bytes.Buffer
 		st.Write(&out)
-		if !strings.Contains(out.String(), "/?") {
-			t.Errorf("status does not mark the unknown total:\n%s", out.String())
+		if strings.Contains(out.String(), "/?") {
+			t.Errorf("status shows an unknown total:\n%s", out.String())
 		}
 	})
 }
