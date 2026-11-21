@@ -17,7 +17,8 @@ import (
 // Supported backends and output formats.
 const (
 	BackendOpenAI = "openai" // translate.backend: OpenAI-compatible chat completions API
-	BackendPiper  = "piper"  // tts.backend: Piper run as a subprocess
+	BackendPiper  = "piper"  // tts.backend: a command run once per segment (Piper)
+	BackendSilero = "silero" // tts.backend: scripts/silero_tts.py, run once per batch of segments
 
 	FormatM4B = "m4b" // audio.format: one file with chapter markers
 	FormatMP3 = "mp3" // audio.format: one file per chapter
@@ -29,7 +30,7 @@ const OutPlaceholder = "{out}"
 
 var (
 	translateBackends = []string{BackendOpenAI}
-	ttsBackends       = []string{BackendPiper}
+	ttsBackends       = []string{BackendPiper, BackendSilero}
 	audioFormats      = []string{FormatM4B, FormatMP3}
 
 	bitrateRe = regexp.MustCompile(`^[1-9][0-9]*k$`)
@@ -279,7 +280,7 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.TTS.Command) == "" {
 		p.addf("tts.command", "не задано")
 	}
-	if len(c.TTS.Args) > 0 && !c.TTS.hasOutPlaceholder() {
+	if c.TTS.Backend == BackendPiper && len(c.TTS.Args) > 0 && !c.TTS.hasOutPlaceholder() {
 		p.addf("tts.args", "нет подстановки %s для пути выходного файла", OutPlaceholder)
 	}
 	if len(c.TTS.AccentArgs) > 0 && strings.TrimSpace(c.TTS.AccentCommand) == "" {
@@ -320,7 +321,9 @@ func (c Config) RequireTranslate() error {
 // cannot work without.
 func (c Config) RequireTTS() error {
 	var p problems
-	if !c.TTS.hasOutPlaceholder() {
+	// Only a command run per segment is told the output path in its
+	// arguments; the Silero script gets it on standard input.
+	if c.TTS.Backend == BackendPiper && !c.TTS.hasOutPlaceholder() {
 		p.addf("tts.args", "нужны аргументы запуска с подстановкой %s для пути выходного файла", OutPlaceholder)
 	}
 	return p.err()

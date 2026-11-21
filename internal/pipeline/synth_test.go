@@ -497,3 +497,175 @@ func TestSynthAccentKeepsWindowsLineEndings(t *testing.T) {
 		}
 	}
 }
+
+// sileroRunner fakes scripts/silero_tts.py: a WAV and "ok" for every input
+// line, "err" for lines that contain a word from failing.
+func sileroRunner(failing ...string) *execx.FakeRunner {
+	fake := execx.NewFakeRunner()
+	fake.Handle("silero_tts.py", func(call execx.Call) ([]byte, error) {
+		var out strings.Builder
+		for line := range strings.Lines(string(call.Input)) {
+			path, text, _ := strings.Cut(strings.TrimRight(line, "\n"), "\t")
+			if slices.ContainsFunc(failing, func(w string) bool { return strings.Contains(text, w) }) {
+				out.WriteString("err too long\n")
+				continue
+			}
+			clip := audio.Clip{Format: tts.FakeFormat, Data: make([]byte, 2*tts.FakeFrames(text))}
+			if err := audio.WriteWAV(path, clip); err != nil {
+				return nil, err
+			}
+			out.WriteString("ok\n")
+		}
+		return []byte(out.String()), nil
+	})
+	return fake
+}
+
+// sileroBook returns a translated book configured for the Silero backend
+// and the synthesizer made from its config.
+func sileroBook(t *testing.T, runner execx.Runner) (*workspace.Workspace, tts.Synthesizer) {
+	t.Helper()
+	ws := translatedBook(t, twoChapters()...)
+	ws.Config.TTS.Backend = "silero"
+	ws.Config.TTS.Command = "silero_tts.py"
+	ws.Config.TTS.Args = []string{"--speaker", "xenia"}
+	syn, err := tts.New(ws.Config.TTS, runner)
+	if err != nil {
+		t.Fatalf("tts.New: %v", err)
+	}
+	return ws, syn
+}
+
+func TestSynthBatchBackendStartsTheEngineOncePerWorker(t *testing.T) {
+	runner := sileroRunner()
+	ws, syn := sileroBook(t, runner) // tts.workers is 3 in the test config
+
+	res := synthAll(t, ws, syn)
+	if res != (SynthResult{Chapters: 2, Segments: 12, Synthesized: 12}) {
+		t.Errorf("Result = %+v, want 12 segments synthesised", res)
+	}
+	calls := runner.CallsTo("silero_tts.py")
+	if len(calls) != 3 {
+		t.Fatalf("the engine was started %d times, want once per worker (3)", len(calls))
+	}
+	lines := 0
+	for _, call := range calls {
+		n := strings.Count(string(call.Input), "\n")
+		if n != 4 {
+			t.Errorf("a worker got %d segments, want an equal share of 4", n)
+		}
+		lines += n
+	}
+	if lines != 12 {
+		t.Errorf("the workers got %d segments in total, want 12", lines)
+	}
+	if c := ws.Manifest.Counts(StageSynth); c != (workspace.Counts{Total: 12, Done: 12}) {
+		t.Errorf("Counts = %+v, want 12 done", c)
+	}
+
+	// Nothing to do: the engine is not started at all.
+	synthAll(t, ws, syn)
+	if len(runner.CallsTo("silero_tts.py")) != 3 {
+		t.Error("the engine was started although every segment is up to date")
+	}
+
+	// One edited paragraph: one start with one segment.
+	path := ws.TranslatedChapterPath(1)
+	writeFile(t, path, strings.Replace(readFile(t, path), "Paragraph C opens here.", "Paragraph C opens here, corrected.", 1))
+	synthAll(t, ws, syn)
+	calls = runner.CallsTo("silero_tts.py")
+	if len(calls) != 4 || strings.Count(string(calls[3].Input), "\n") != 1 {
+		t.Errorf("after an edit the engine was started %d more times", len(calls)-3)
+	}
+
+	// The audio builds into a book like any other.
+	if res := buildBook(t, ws, newEncoder()); res.Encoded != 1 {
+		t.Errorf("build after a batch synthesis: %+v", res)
+	}
+}
+
+func TestSynthBatchBackendFailures(t *testing.T) {
+	t.Run("a failed segment is recorded, the rest is done", func(t *testing.T) {
+		runner := sileroRunner("Paragraph C ")
+		ws, syn := sileroBook(t, runner)
+
+		res, err := Synth(context.Background(), ws, syn, quiet, SynthOptions{Chapter: AllChapters})
+		if !errors.Is(err, workspace.ErrUnitsFailed) || res.Failed != 1 || res.Synthesized != 11 {
+			t.Fatalf("Result = %+v, error = %v; want one failed segment", res, err)
+		}
+		// The retry sends only the failed segment.
+		fixed := sileroRunner()
+		syn, _ = tts.New(ws.Config.TTS, fixed)
+		if res := synthAll(t, ws, syn); res.Synthesized != 1 {
+			t.Errorf("retry: Result = %+v", res)
+		}
+		if calls := fixed.CallsTo("silero_tts.py"); len(calls) != 1 || !strings.Contains(string(calls[0].Input), "Paragraph C ") {
+			t.Errorf("retry calls = %d", len(calls))
+		}
+	})
+	t.Run("an engine that cannot start stops the stage", func(t *testing.T) {
+		boom := errors.New("silero_tts.py: exit status 1: No module named 'scipy'")
+		runner := execx.NewFakeRunner()
+		runner.Stub("silero_tts.py", nil, boom)
+		ws, syn := sileroBook(t, runner)
+
+		_, err := Synth(context.Background(), ws, syn, quiet, SynthOptions{Chapter: AllChapters})
+		if !errors.Is(err, boom) {
+			t.Errorf("error = %v, want %v", err, boom)
+		}
+		if c := ws.Manifest.Counts(StageSynth); c.Failed != 0 {
+			t.Errorf("Counts = %+v: an engine failure was recorded as failed segments", c)
+		}
+	})
+	t.Run("segments finished before a crash are kept", func(t *testing.T) {
+		// The engine writes two files and then dies.
+		runner := execx.NewFakeRunner()
+		runner.Handle("silero_tts.py", func(call execx.Call) ([]byte, error) {
+			n := 0
+			for line := range strings.Lines(string(call.Input)) {
+				if n++; n > 2 {
+					break
+				}
+				path, text, _ := strings.Cut(strings.TrimRight(line, "\n"), "\t")
+				audio.WriteWAV(path, audio.Clip{Format: tts.FakeFormat, Data: make([]byte, 2*tts.FakeFrames(text))})
+			}
+			return nil, errors.New("silero_tts.py: signal: killed")
+		})
+		ws, syn := sileroBook(t, runner)
+		ws.Config.TTS.Workers = 1
+		if _, err := Synth(context.Background(), ws, syn, quiet, SynthOptions{Chapter: AllChapters}); err == nil {
+			t.Fatal("Synth succeeded although the engine died")
+		}
+
+		healthy := sileroRunner()
+		syn, _ = tts.New(ws.Config.TTS, healthy)
+		res := synthAll(t, ws, syn)
+		if res.Synthesized != 10 {
+			t.Errorf("after the crash %d segments were synthesised, want 10: the two finished ones are reused", res.Synthesized)
+		}
+	})
+}
+
+func TestSplitJobs(t *testing.T) {
+	jobs := make([]synthJob, 7)
+	for i := range jobs {
+		jobs[i].hash = string(rune('a' + i))
+	}
+	for _, tt := range []struct {
+		n    int
+		want []int
+	}{{1, []int{7}}, {3, []int{3, 2, 2}}, {7, []int{1, 1, 1, 1, 1, 1, 1}}, {20, []int{1, 1, 1, 1, 1, 1, 1}}, {0, []int{7}}} {
+		var sizes []int
+		seen := 0
+		for _, part := range splitJobs(jobs, tt.n) {
+			sizes = append(sizes, len(part))
+			seen += len(part)
+		}
+		if !slices.Equal(sizes, tt.want) || seen != 7 {
+			t.Errorf("splitJobs(7 jobs, %d) sizes = %v, want %v", tt.n, sizes, tt.want)
+		}
+	}
+	if parts := splitJobs(nil, 3); len(parts) != 0 {
+		t.Errorf("splitJobs of nothing = %v", parts)
+	}
+}

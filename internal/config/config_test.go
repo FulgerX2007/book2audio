@@ -286,6 +286,23 @@ func TestRequireTranslate(t *testing.T) {
 	}
 }
 
+func TestSileroNeedsNoOutPlaceholder(t *testing.T) {
+	cfg := Default()
+	cfg.TTS.Backend = BackendSilero
+	cfg.TTS.Command = "scripts/silero_tts.py"
+	cfg.TTS.Args = []string{"--speaker", "xenia"}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() = %v, want nil", err)
+	}
+	if err := cfg.RequireTTS(); err != nil {
+		t.Errorf("RequireTTS() = %v, want nil", err)
+	}
+	cfg.TTS.Args = nil
+	if err := cfg.RequireTTS(); err != nil {
+		t.Errorf("RequireTTS() without arguments = %v, want nil", err)
+	}
+}
+
 func TestRequireTTS(t *testing.T) {
 	cfg := Default()
 	err := cfg.RequireTTS()

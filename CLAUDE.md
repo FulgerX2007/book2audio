@@ -29,7 +29,8 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 | `internal/chunk` | chapter parsing, chunking, sentence splitting |
 | `internal/translate` | `Translator`, glossary, prompt, OpenAI-compatible client |
 | `internal/speech` | text preparation and segmentation for speech |
-| `internal/tts` | `Synthesizer`, Piper backend |
+| `internal/tts` | `Synthesizer`, `BatchSynthesizer`, Piper and Silero backends |
+| `scripts/` | `silero_tts.py`, the engine side of the Silero backend |
 | `internal/audio` | PCM WAV, joining, chapter metadata, ffmpeg encoding |
 | `internal/pipeline` | stages 3–5 (`translate`, `synth`, `build`), `run`, `status` |
 | `internal/testdata` | PDF fixtures (`gen.sh`), shared through `go:embed` |
@@ -39,6 +40,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 - **Language.** Code comments and commit messages are in English; everything the user reads (CLI output, errors, log messages, README) is in Russian.
 - **External tools** are run only through `execx.Runner`. Unit tests use `execx.FakeRunner`; tests with real tools skip themselves when the tool is missing.
 - **Backends** are created by a factory (`translate.New`, `tts.New`) and injected through `pipeline.Deps`. Tests use `translate.FakeTranslator` and `tts.FakeSynthesizer`, which count their calls — assert on the calls to prove that work was *not* repeated.
+- **Speech backends.** An engine that is expensive to start implements `tts.BatchSynthesizer`; the synth stage then gives each worker one batch instead of one segment. A per-segment error is returned in the slice and recorded as a failed unit; an engine that cannot run at all is a fatal error.
 - **Paths.** `workspace.Open` makes the folder absolute; build every path with the `Workspace` path methods.
 - **Files are written atomically** (`workspace.WriteFileAtomic`, or a `.part` file renamed on success). The translate and synth stages take an existing cache file for a finished unit, so a partial file must never appear at a cache path.
 - **Units and hashes.** Every unit of work has an input hash; `Manifest.NeedsWork` decides whether to redo it. What goes into each hash:

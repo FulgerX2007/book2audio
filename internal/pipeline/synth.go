@@ -130,19 +130,19 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 		return res, err
 	}
 	var mu sync.Mutex // guards res
-	err = workpool.Run(ctx, ws.Config.TTS.Workers, jobs, func(ctx context.Context, job synthJob) error {
+	// record stores the outcome of one segment in the manifest.
+	record := func(ctx context.Context, job synthJob, synthErr error) error {
 		unit := workspace.Unit{In: job.hash, Chapter: chapters.UnitID(job.chapter)}
 		out := ws.SegmentPath(job.hash)
-
-		if err := syn.Synthesize(ctx, job.text, out); err != nil {
+		if synthErr != nil {
 			if ctx.Err() != nil {
 				return ctx.Err() // interrupted, not a failure of this segment
 			}
-			log.Warn("сегмент не озвучен", "chapter", unit.Chapter, "err", err)
+			log.Warn("сегмент не озвучен", "chapter", unit.Chapter, "err", synthErr)
 			mu.Lock()
 			res.Failed++
 			mu.Unlock()
-			return ws.Manifest.MarkFailed(StageSynth, job.hash, unit, out, err)
+			return ws.Manifest.MarkFailed(StageSynth, job.hash, unit, out, synthErr)
 		}
 		if err := ws.Manifest.MarkDone(StageSynth, job.hash, unit, out); err != nil {
 			return err
@@ -151,7 +151,34 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 		res.Synthesized++
 		mu.Unlock()
 		return nil
-	})
+	}
+
+	if batch, ok := syn.(tts.BatchSynthesizer); ok {
+		// One engine start per worker: each gets an equal share of the segments.
+		err = workpool.Run(ctx, ws.Config.TTS.Workers, splitJobs(jobs, ws.Config.TTS.Workers), func(ctx context.Context, part []synthJob) error {
+			items := make([]tts.Item, len(part))
+			for i, job := range part {
+				items[i] = tts.Item{Text: job.text, OutPath: ws.SegmentPath(job.hash)}
+			}
+			errs, err := batch.SynthesizeBatch(ctx, items)
+			if err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return err // the engine itself does not work: stop the stage
+			}
+			for i, job := range part {
+				if err := record(ctx, job, errs[i]); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	} else {
+		err = workpool.Run(ctx, ws.Config.TTS.Workers, jobs, func(ctx context.Context, job synthJob) error {
+			return record(ctx, job, syn.Synthesize(ctx, job.text, ws.SegmentPath(job.hash)))
+		})
+	}
 	if err != nil {
 		return res, err
 	}
@@ -254,4 +281,18 @@ func LoadSegments(ws *workspace.Workspace, n int) ([]SegmentRef, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return refs, nil
+}
+
+// splitJobs deals the jobs into at most n parts of nearly equal size,
+// keeping their order inside a part.
+func splitJobs(jobs []synthJob, n int) [][]synthJob {
+	if n < 1 {
+		n = 1
+	}
+	n = min(n, len(jobs))
+	parts := make([][]synthJob, n)
+	for i, job := range jobs {
+		parts[i%n] = append(parts[i%n], job)
+	}
+	return parts
 }

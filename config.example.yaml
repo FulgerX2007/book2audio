@@ -36,10 +36,19 @@ translate:
   workers: 4
   max_retries: 5           # повторы при сбоях связи: 429, 5xx, таймаут
 
+# Озвучка. Два бэкенда:
+#   piper  — команда запускается на каждый сегмент: текст на стандартный ввод,
+#            WAV по пути {out}. Подходит для Piper и любого похожего движка.
+#   silero — scripts/silero_tts.py: модель загружается один раз на пачку
+#            сегментов, ударения и омографы Silero расставляет сам. Пример:
+#              backend: silero
+#              command: /полный/путь/scripts/silero_tts.py
+#              args: ["--speaker", "xenia"]
+#              segment_chars: 800
 tts:
   backend: piper
   command: piper
-  # Обязательно: аргументы запуска движка. {out} заменяется путём WAV-файла.
+  # Для piper обязательно: аргументы запуска движка. {out} заменяется путём WAV-файла.
   # Текст сегмента подаётся на стандартный ввод одной строкой.
   args: ["--model", "voices/ru_RU-irina-medium.onnx", "--output_file", "{out}"]
   segment_chars: 1200      # абзац длиннее делится по предложениям
