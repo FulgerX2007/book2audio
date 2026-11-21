@@ -170,7 +170,17 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 			if ctx.Err() != nil {
 				return ctx.Err() // interrupted, not a failure of this chunk
 			}
-			log.Warn("фрагмент не переведён", "chapter", unit.Chapter, "err", err)
+			attrs := []any{"chapter", unit.Chapter, "err", err, "text", preview(job.req.Text)}
+			// Keep the answer that was rejected: it shows what went wrong
+			// (a refusal, a summary, a truncated text) and can be fixed
+			// and moved to the cache path by hand.
+			if rejected, ok := errors.AsType[*rejectedTranslation](err); ok && rejected.text != "" {
+				path := RejectedPath(out)
+				if werr := workspace.WriteFileAtomic(path, []byte(rejected.text+"\n"), 0o644); werr == nil {
+					attrs = append(attrs, "answer", path)
+				}
+			}
+			log.Warn("фрагмент не переведён", attrs...)
 			mu.Lock()
 			res.Failed++
 			mu.Unlock()
@@ -263,11 +273,30 @@ func translateChecked(ctx context.Context, tr translate.Translator, req translat
 		if lastErr = checkTranslation(req.Text, text); lastErr == nil {
 			return text, nil
 		}
+		lastErr = &rejectedTranslation{err: lastErr, text: text}
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
 	}
 	return "", lastErr
+}
+
+// rejectedTranslation is the error of an answer that failed the validation;
+// it carries the answer.
+type rejectedTranslation struct {
+	err  error
+	text string
+}
+
+func (e *rejectedTranslation) Error() string { return e.err.Error() }
+func (e *rejectedTranslation) Unwrap() error { return e.err }
+
+// RejectedPath is where the answer of the model is kept when the
+// translation of a chunk is rejected; chunkPath is the cache path of the
+// chunk. The name differs from the cache path, so the file is never taken
+// for a finished translation.
+func RejectedPath(chunkPath string) string {
+	return strings.TrimSuffix(chunkPath, ".ru.txt") + ".rejected.txt"
 }
 
 // checkTranslation rejects an empty translation and one whose length is far

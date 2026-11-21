@@ -393,6 +393,31 @@ func TestTranslateValidatesResults(t *testing.T) {
 			if u, _ := ws.Manifest.Unit(StageTranslate, id); !strings.Contains(u.Error, "перевод") {
 				t.Errorf("recorded error = %q", u.Error)
 			}
+			// The rejected answer is kept for inspection, beside the cache
+			// path and never at it.
+			rejected := RejectedPath(ws.ChunkPath(id))
+			if bad == "" {
+				if _, err := os.Stat(rejected); !errors.Is(err, os.ErrNotExist) {
+					t.Error("a file was written for an empty answer")
+				}
+			} else if got := readFile(t, rejected); strings.TrimSpace(got) != strings.TrimSpace(bad) {
+				t.Errorf("rejected answer file = %q, want the answer of the model", got)
+			}
+			if _, err := os.Stat(ws.ChunkPath(id)); !errors.Is(err, os.ErrNotExist) {
+				t.Error("the rejected answer was stored at the cache path")
+			}
+
+			// Moved to the cache path by hand, the answer is accepted.
+			if bad != "" {
+				if err := os.Rename(rejected, ws.ChunkPath(id)); err != nil {
+					t.Fatal(err)
+				}
+				before := tr.Calls()
+				res := translateAll(t, ws, tr)
+				if tr.Calls() != before || res.Assembled != 1 {
+					t.Errorf("after accepting the answer by hand: calls +%d, Result = %+v", tr.Calls()-before, res)
+				}
+			}
 		})
 	}
 }
