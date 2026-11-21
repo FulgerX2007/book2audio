@@ -68,7 +68,11 @@ type manifestHeader struct {
 type Workspace struct {
 	Dir    string        // work/<slug>
 	Config config.Config // config of this run
-	Source Source
+	Source Source        // the PDF as recorded at init time
+
+	// Manifest is the state of the stages. Change it only while holding
+	// the lock taken by Lock.
+	Manifest *Manifest
 
 	lock *Lock
 }
@@ -204,7 +208,11 @@ func Open(arg string, opts OpenOptions) (*Workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Workspace{Dir: dir, Config: cfg, Source: hdr.Source}, nil
+	manifest, err := LoadManifest(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &Workspace{Dir: dir, Config: cfg, Source: hdr.Source, Manifest: manifest}, nil
 }
 
 // findByPDF locates the working folder created for the PDF at pdfPath.

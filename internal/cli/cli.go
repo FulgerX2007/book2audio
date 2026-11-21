@@ -270,6 +270,7 @@ func openBook(inv *Invocation) (*workspace.Workspace, error) {
 	if err := ws.Lock(); err != nil {
 		return nil, err
 	}
+	ws.Manifest.Force = inv.Force
 	return ws, nil
 }
 
