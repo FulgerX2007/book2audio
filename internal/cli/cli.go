@@ -1,0 +1,238 @@
+// Package cli implements the book2audio command-line interface: subcommand
+// dispatch, the flags shared by all subcommands and usage output.
+package cli
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log/slog"
+	"text/tabwriter"
+)
+
+const prog = "book2audio"
+
+// Exit codes returned by Run.
+const (
+	ExitOK    = 0 // success
+	ExitError = 1 // the subcommand failed
+	ExitUsage = 2 // wrong command line
+)
+
+// ErrNotImplemented is returned by subcommands that are still stubs.
+var ErrNotImplemented = errors.New("подкоманда ещё не реализована")
+
+// UsageError is returned by a subcommand when it was called with wrong
+// arguments. The dispatcher prints the subcommand usage and exits with
+// ExitUsage.
+type UsageError struct{ Msg string }
+
+func (e *UsageError) Error() string { return e.Msg }
+
+// Options are the flags shared by every subcommand.
+type Options struct {
+	ConfigPath string // --config: config file used for this run
+	Workdir    string // --workdir: directory holding the per-book folders
+	Force      bool   // --force: overwrite files that were edited by hand
+	Verbose    bool   // -v: debug logging
+}
+
+// Invocation is one parsed call of a subcommand.
+type Invocation struct {
+	Options
+	Args   []string // positional arguments
+	Stdout io.Writer
+	Stderr io.Writer
+	Log    *slog.Logger
+}
+
+// RunFunc executes a subcommand.
+type RunFunc func(ctx context.Context, inv *Invocation) error
+
+// Command describes one subcommand.
+type Command struct {
+	Name    string
+	Args    string // positional arguments as shown in the usage text
+	Summary string
+	// Setup registers the subcommand's own flags on fs and returns the
+	// function that runs it once the command line has been parsed.
+	Setup func(fs *flag.FlagSet) RunFunc
+}
+
+// App dispatches the command line to one of its commands.
+type App struct {
+	Commands []Command
+	Stdout   io.Writer
+	Stderr   io.Writer
+}
+
+// New returns an App with the built-in book2audio commands.
+func New(stdout, stderr io.Writer) *App {
+	return &App{Commands: builtin(), Stdout: stdout, Stderr: stderr}
+}
+
+// Run parses args (without the program name), runs the selected built-in
+// subcommand and returns the process exit code.
+func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	return New(stdout, stderr).Run(ctx, args)
+}
+
+// Run parses args (without the program name), runs the selected subcommand
+// and returns the process exit code.
+func (a *App) Run(ctx context.Context, args []string) int {
+	if len(args) == 0 {
+		a.usage(a.Stderr)
+		return ExitUsage
+	}
+
+	name, rest := args[0], args[1:]
+	switch name {
+	case "-h", "-help", "--help":
+		a.usage(a.Stdout)
+		return ExitOK
+	case "help":
+		if len(rest) == 0 {
+			a.usage(a.Stdout)
+			return ExitOK
+		}
+		// "help <command>" is the same as "<command> --help".
+		name, rest = rest[0], []string{"--help"}
+	}
+
+	cmd, ok := a.lookup(name)
+	if !ok {
+		fmt.Fprintf(a.Stderr, "%s: неизвестная подкоманда %q\n\n", prog, name)
+		a.usage(a.Stderr)
+		return ExitUsage
+	}
+	return a.runCommand(ctx, cmd, rest)
+}
+
+func (a *App) lookup(name string) (Command, bool) {
+	for _, cmd := range a.Commands {
+		if cmd.Name == name {
+			return cmd, true
+		}
+	}
+	return Command{}, false
+}
+
+func (a *App) runCommand(ctx context.Context, cmd Command, args []string) int {
+	fs := flag.NewFlagSet(cmd.Name, flag.ContinueOnError)
+	// Errors and usage are printed here, not by the flag package.
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
+
+	var opts Options
+	fs.StringVar(&opts.ConfigPath, "config", "", "файл конфига на этот запуск (по умолчанию — config.yaml книги)")
+	fs.StringVar(&opts.Workdir, "workdir", "", "каталог с рабочими папками книг (по умолчанию — из конфига)")
+	fs.BoolVar(&opts.Force, "force", false, "перезаписывать файлы, изменённые вручную")
+	fs.BoolVar(&opts.Verbose, "v", false, "подробный журнал")
+	run := cmd.Setup(fs)
+
+	positional, err := parseInterspersed(fs, args)
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		commandUsage(a.Stdout, cmd, fs)
+		return ExitOK
+	case err != nil:
+		fmt.Fprintf(a.Stderr, "%s %s: %v\n\n", prog, cmd.Name, err)
+		commandUsage(a.Stderr, cmd, fs)
+		return ExitUsage
+	}
+
+	inv := &Invocation{
+		Options: opts,
+		Args:    positional,
+		Stdout:  a.Stdout,
+		Stderr:  a.Stderr,
+		Log:     newLogger(a.Stderr, opts.Verbose),
+	}
+	if err := run(ctx, inv); err != nil {
+		fmt.Fprintf(a.Stderr, "%s %s: %v\n", prog, cmd.Name, err)
+		if _, ok := errors.AsType[*UsageError](err); ok {
+			fmt.Fprintln(a.Stderr)
+			commandUsage(a.Stderr, cmd, fs)
+			return ExitUsage
+		}
+		return ExitError
+	}
+	return ExitOK
+}
+
+// parseInterspersed parses args with fs and returns the positional arguments.
+// Unlike fs.Parse alone it accepts flags after positional arguments
+// ("init book.pdf --slug x"). Everything after a "--" is positional.
+func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
+	var tail []string
+	for i, arg := range args {
+		if arg == "--" {
+			args, tail = args[:i], args[i+1:]
+			break
+		}
+	}
+
+	var positional []string
+	for len(args) > 0 {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		args = fs.Args()
+		if len(args) == 0 {
+			break
+		}
+		// fs.Parse stopped at the first non-flag argument: keep it and go on.
+		positional = append(positional, args[0])
+		args = args[1:]
+	}
+	return append(positional, tail...), nil
+}
+
+func newLogger(w io.Writer, verbose bool) *slog.Logger {
+	level := slog.LevelInfo
+	if verbose {
+		level = slog.LevelDebug
+	}
+	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: level}))
+}
+
+func (a *App) usage(w io.Writer) {
+	fmt.Fprintf(w, "%s — PDF → русская аудиокнига по главам\n\n", prog)
+	fmt.Fprintf(w, "Использование:\n  %s <подкоманда> [флаги] <аргументы>\n\nПодкоманды:\n", prog)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	for _, cmd := range a.Commands {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\n", cmd.Name, cmd.Args, cmd.Summary)
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "\nОбщие флаги: --config, --workdir, --force, -v\n")
+	fmt.Fprintf(w, "Справка по подкоманде: %s <подкоманда> --help\n", prog)
+}
+
+func commandUsage(w io.Writer, cmd Command, fs *flag.FlagSet) {
+	fmt.Fprintf(w, "Использование: %s %s [флаги] %s\n\n%s\n\nФлаги:\n", prog, cmd.Name, cmd.Args, cmd.Summary)
+	fs.SetOutput(w)
+	fs.PrintDefaults()
+	fs.SetOutput(io.Discard)
+}
+
+// builtin returns the book2audio subcommands in pipeline order.
+func builtin() []Command {
+	const book = "<book.pdf | work/<slug>>"
+	return []Command{
+		{Name: "init", Args: "<book.pdf>", Summary: "создать рабочую папку книги", Setup: stub},
+		{Name: "extract", Args: book, Summary: "извлечь текст по страницам (сканы — через OCR)", Setup: stub},
+		{Name: "chapters", Args: book, Summary: "очистить текст и разбить его на главы", Setup: stub},
+		{Name: "translate", Args: book, Summary: "перевести главы", Setup: stub},
+		{Name: "synth", Args: book, Summary: "озвучить переведённые главы", Setup: stub},
+		{Name: "build", Args: book, Summary: "собрать аудиокнигу (M4B или MP3)", Setup: stub},
+		{Name: "run", Args: book, Summary: "выполнить все этапы подряд", Setup: stub},
+		{Name: "status", Args: book, Summary: "показать состояние книги по этапам", Setup: stub},
+	}
+}
+
+// stub is the Setup of a subcommand that is not implemented yet.
+func stub(*flag.FlagSet) RunFunc {
+	return func(context.Context, *Invocation) error { return ErrNotImplemented }
+}

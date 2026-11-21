@@ -1,0 +1,9 @@
+# build output
+/bin/
+
+# per-book working folders
+/work/
+
+# test artefacts
+*.test
+coverage.out
