@@ -309,6 +309,16 @@ func TestRunKeepsHandEditedChapter(t *testing.T) {
 		t.Errorf("Result = %+v, want nothing to do", res)
 	}
 
+	// --force discards the edit even though the source is unchanged.
+	ws.Manifest.Force = true
+	if res := run(t, ws); res.Written != 1 || strings.Contains(readFile(t, ws.ChapterPath(1)), "fixed by hand") {
+		t.Errorf("with Force and an unchanged source: Result = %+v, want the chapter rebuilt", res)
+	}
+	ws.Manifest.Force = false
+	if err := os.WriteFile(ws.ChapterPath(1), []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	// The source of chapter 1 changes: the edited file still wins.
 	setPages(t, ws, "Chapter 1\n"+para("Changed")+"\n\nChapter 2\n"+para("Two"))
 	res := run(t, ws)

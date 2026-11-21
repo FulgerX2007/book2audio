@@ -82,7 +82,14 @@ func Run(ctx context.Context, ws *workspace.Workspace, log *slog.Logger) (Result
 			return res, err
 		}
 		if !need {
-			continue
+			// Up to date — unless --force asks to discard a hand edit.
+			edited, err := ws.Manifest.Edited(Stage, id)
+			if err != nil {
+				return res, err
+			}
+			if !ws.Manifest.Force || !edited {
+				continue
+			}
 		}
 		out := ws.ChapterPath(start.N)
 		if protected, err := ws.Manifest.Protected(Stage, id); err != nil {

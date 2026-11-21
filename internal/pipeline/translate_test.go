@@ -330,6 +330,14 @@ func TestTranslateKeepsHandEditedTranslation(t *testing.T) {
 		t.Errorf("Result = %+v, want nothing to do", res)
 	}
 
+	// --force discards the edit even though the source is unchanged.
+	ws.Manifest.Force = true
+	if res := translateAll(t, ws, tr); res.Assembled != 1 || strings.Contains(readFile(t, ws.TranslatedChapterPath(1)), "исправленный вручную") {
+		t.Errorf("with Force and an unchanged source: Result = %+v, want the chapter reassembled", res)
+	}
+	ws.Manifest.Force = false
+	writeFile(t, ws.TranslatedChapterPath(1), edited)
+
 	// The source changes: the chunks are translated, the edited file stays.
 	changed := slices.Clone(chs)
 	changed[0].paragraphs = append(slices.Clone(chs[0].paragraphs), para("G"))

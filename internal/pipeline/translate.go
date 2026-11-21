@@ -322,8 +322,15 @@ func assembleChapter(ws *workspace.Workspace, plan chapterPlan, log *slog.Logger
 	id := chapters.UnitID(plan.n)
 	in := workspace.HashStrings(append([]string{StageTranslated}, plan.hashes...)...)
 	need, err := ws.Manifest.NeedsWork(StageTranslated, id, in)
-	if err != nil || !need {
+	if err != nil {
 		return false, false, err
+	}
+	if !need {
+		// Up to date — unless --force asks to discard a hand edit.
+		edited, err := ws.Manifest.Edited(StageTranslated, id)
+		if err != nil || !ws.Manifest.Force || !edited {
+			return false, false, err
+		}
 	}
 	out := ws.TranslatedChapterPath(plan.n)
 	if protected, err := ws.Manifest.Protected(StageTranslated, id); err != nil {
