@@ -317,7 +317,6 @@ func TestCommandErrors(t *testing.T) {
 		{"plain error", errors.New("диск переполнен"), ExitError, false},
 		{"usage error", &UsageError{Msg: "нужен путь к PDF"}, ExitUsage, true},
 		{"wrapped usage error", errors.Join(errors.New("контекст"), &UsageError{Msg: "нужен путь к PDF"}), ExitUsage, true},
-		{"not implemented", ErrNotImplemented, ExitError, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -400,24 +399,7 @@ func TestInitCommand(t *testing.T) {
 
 func TestStageCommandsOpenTheBook(t *testing.T) {
 	stages := []string{"extract", "chapters", "translate", "synth", "build", "run", "status"}
-	// Stages that are still stubs; the list shrinks as stages are implemented.
-	stubs := []string{"run", "status"}
 
-	t.Run("initialised book reaches the stage", func(t *testing.T) {
-		pdf, workdir := writeBook(t)
-		if code, _, stderr := runBuiltin("init", pdf, "--workdir", workdir); code != ExitOK {
-			t.Fatalf("init failed:\n%s", stderr)
-		}
-		for _, stage := range stubs {
-			// Both forms of the argument: the PDF and the working folder.
-			for _, arg := range []string{pdf, filepath.Join(workdir, "my-book")} {
-				code, _, stderr := runBuiltin(stage, arg, "--workdir", workdir)
-				if code != ExitError || !strings.Contains(stderr, ErrNotImplemented.Error()) {
-					t.Errorf("%s %s: exit code = %d, stderr:\n%s", stage, arg, code, stderr)
-				}
-			}
-		}
-	})
 	t.Run("book without a working folder", func(t *testing.T) {
 		pdf, workdir := writeBook(t)
 		code, _, stderr := runBuiltin("extract", pdf, "--workdir", workdir)
@@ -605,9 +587,56 @@ func TestExtractCommand(t *testing.T) {
 		t.Errorf("the audiobook %s: %v; stdout:\n%s", book, err, stdout.String())
 	}
 
+	// status reports the finished book.
+	stdout.Reset()
+	if code := app.Run(context.Background(), []string{"status", pdf, "--workdir", workdir}); code != ExitOK {
+		t.Fatalf("status: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	for _, want := range []string{"Этап", "extract", "build", "Готово"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("status lacks %q:\n%s", want, stdout.String())
+		}
+	}
+
+	// run goes through every stage and finds nothing left to do.
+	stdout.Reset()
+	if code := app.Run(context.Background(), []string{"run", pdf, "--workdir", workdir}); code != ExitOK {
+		t.Fatalf("run: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "переведено сейчас 0") || !strings.Contains(stdout.String(), book) {
+		t.Errorf("run summary:\n%s", stdout.String())
+	}
+	if code := app.Run(context.Background(), []string{"run", pdf, "--workdir", workdir, "--from", "nowhere"}); code != ExitError {
+		t.Errorf("run with an unknown stage: exit code = %d, want %d", code, ExitError)
+	}
+
 	// A failing tool makes the subcommand fail.
 	fake.Stub("pdfinfo", nil, errors.New("pdfinfo: exit status 1"))
 	if code := app.Run(context.Background(), []string{"extract", pdf, "--workdir", workdir}); code != ExitError {
 		t.Errorf("extract with a failing tool: exit code = %d, want %d", code, ExitError)
+	}
+}
+
+// TestRunCommandInitialisesANewBook checks that "run book.pdf" creates the
+// working folder itself.
+func TestRunCommandInitialisesANewBook(t *testing.T) {
+	pdf, workdir := writeBook(t)
+	fake := execx.NewFakeRunner()
+	const filler = " — a page with enough plain text to have a real text layer\n"
+	fake.Stub("pdfinfo", []byte("Pages: 1\n"), nil)
+	fake.Stub("pdftotext", []byte("only page"+filler+"\f"), nil)
+	app, stdout, stderr := newTestApp(Builtin(Deps{Runner: fake})...)
+
+	code := app.Run(context.Background(), []string{"run", pdf, "--workdir", workdir, "--to", "chapters"})
+	if code != ExitOK {
+		t.Fatalf("run: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(workdir, "my-book", "02-chapters", "ch01.md")); err != nil {
+		t.Errorf("the chapter file was not written: %v\n%s", err, stdout.String())
+	}
+
+	// A missing PDF is still an error, not an attempt to initialise.
+	if code := app.Run(context.Background(), []string{"run", filepath.Join(workdir, "absent.pdf")}); code != ExitError {
+		t.Errorf("run of a missing PDF: exit code = %d, want %d", code, ExitError)
 	}
 }

@@ -9,15 +9,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/FulgerX2007/book2audio/internal/chapters"
-	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/extract"
 	"github.com/FulgerX2007/book2audio/internal/pipeline"
-	"github.com/FulgerX2007/book2audio/internal/translate"
-	"github.com/FulgerX2007/book2audio/internal/tts"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
@@ -29,9 +27,6 @@ const (
 	ExitError = 1 // the subcommand failed
 	ExitUsage = 2 // wrong command line
 )
-
-// ErrNotImplemented is returned by subcommands that are still stubs.
-var ErrNotImplemented = errors.New("подкоманда ещё не реализована")
 
 // UsageError is returned by a subcommand when it was called with wrong
 // arguments. The dispatcher prints the subcommand usage and exits with
@@ -228,19 +223,10 @@ func commandUsage(w io.Writer, cmd Command, fs *flag.FlagSet) {
 
 // Deps are the outside-world dependencies of the built-in commands; tests
 // replace them with fakes.
-type Deps struct {
-	// Runner runs the external tools.
-	Runner execx.Runner
-	// NewTranslator creates the translation backend of a book.
-	NewTranslator func(cfg config.Translate) (translate.Translator, error)
-	// NewSynthesizer creates the speech backend of a book.
-	NewSynthesizer func(cfg config.TTS, runner execx.Runner) (tts.Synthesizer, error)
-}
+type Deps = pipeline.Deps
 
 // DefaultDeps returns the real dependencies: processes and network.
-func DefaultDeps() Deps {
-	return Deps{Runner: execx.OSRunner{}, NewTranslator: translate.New, NewSynthesizer: tts.New}
-}
+func DefaultDeps() Deps { return pipeline.DefaultDeps() }
 
 // Builtin returns the book2audio subcommands in pipeline order.
 func Builtin(deps Deps) []Command {
@@ -253,8 +239,8 @@ func Builtin(deps Deps) []Command {
 		{Name: "translate", Args: book, Summary: "перевести главы", Setup: setupTranslate(deps)},
 		{Name: "synth", Args: book, Summary: "озвучить переведённые главы", Setup: setupSynth(deps)},
 		{Name: "build", Args: book, Summary: "собрать аудиокнигу (M4B или MP3)", Setup: setupBuild(deps)},
-		{Name: "run", Args: book, Summary: "выполнить все этапы подряд", Setup: stub},
-		{Name: "status", Args: book, Summary: "показать состояние книги по этапам", Setup: stub},
+		{Name: "run", Args: book, Summary: "выполнить все этапы подряд", Setup: setupRun(deps)},
+		{Name: "status", Args: book, Summary: "показать состояние книги по этапам", Setup: setupStatus},
 	}
 }
 
@@ -393,6 +379,49 @@ func setupBuild(deps Deps) func(*flag.FlagSet) RunFunc {
 	}
 }
 
+// setupRun is the Setup of "run".
+func setupRun(deps Deps) func(*flag.FlagSet) RunFunc {
+	return func(fs *flag.FlagSet) RunFunc {
+		stages := strings.Join(pipeline.Stages, ", ")
+		from := fs.String("from", "", "первый этап запуска ("+stages+")")
+		to := fs.String("to", "", "последний этап запуска")
+		return func(ctx context.Context, inv *Invocation) error {
+			ws, err := openBook(inv)
+			if errors.Is(err, workspace.ErrNotInitialized) && len(inv.Args) == 1 {
+				// "run book.pdf" on a new book creates its working folder.
+				if _, err := workspace.Init(inv.Args[0], workspace.InitOptions{ConfigPath: inv.ConfigPath, Workdir: inv.Workdir}); err != nil {
+					return err
+				}
+				ws, err = openBook(inv)
+			}
+			if err != nil {
+				return err
+			}
+			defer ws.Close()
+
+			return pipeline.Run(ctx, ws, deps, inv.Log, inv.Stdout, pipeline.RunOptions{From: *from, To: *to})
+		}
+	}
+}
+
+// setupStatus is the Setup of "status".
+func setupStatus(*flag.FlagSet) RunFunc {
+	return func(_ context.Context, inv *Invocation) error {
+		ws, err := openBook(inv)
+		if err != nil {
+			return err
+		}
+		defer ws.Close()
+
+		st, err := pipeline.ReadStatus(ws)
+		if err != nil {
+			return err
+		}
+		st.Write(inv.Stdout)
+		return nil
+	}
+}
+
 // openBook opens and locks the working folder named by the single
 // positional argument of a stage subcommand. The caller must Close it.
 func openBook(inv *Invocation) (*workspace.Workspace, error) {
@@ -411,18 +440,4 @@ func openBook(inv *Invocation) (*workspace.Workspace, error) {
 	}
 	ws.Manifest.Force = inv.Force
 	return ws, nil
-}
-
-// stub is the Setup of a stage subcommand that is not implemented yet: it
-// opens and locks the book like the real stage will, then reports that the
-// stage is missing.
-func stub(*flag.FlagSet) RunFunc {
-	return func(_ context.Context, inv *Invocation) error {
-		ws, err := openBook(inv)
-		if err != nil {
-			return err
-		}
-		defer ws.Close()
-		return ErrNotImplemented
-	}
 }

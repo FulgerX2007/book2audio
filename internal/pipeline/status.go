@@ -1,0 +1,112 @@
+package pipeline
+
+import (
+	"fmt"
+	"io"
+	"path/filepath"
+	"text/tabwriter"
+
+	"github.com/FulgerX2007/book2audio/internal/chapters"
+	"github.com/FulgerX2007/book2audio/internal/extract"
+	"github.com/FulgerX2007/book2audio/internal/workspace"
+)
+
+// StageStatus is the progress of one stage.
+type StageStatus struct {
+	Name   string
+	What   string // what the units are
+	Counts workspace.Counts
+}
+
+// Failure is a unit that failed.
+type Failure struct {
+	Stage   string
+	Chapter string // chapter of the unit, when known
+	Error   string
+	// Out is where the result was expected. A file put there by hand is
+	// accepted on the next run.
+	Out string
+}
+
+// Status is the state of a book.
+type Status struct {
+	Dir      string
+	Stages   []StageStatus
+	Failures []Failure
+	Edited   []string // files changed by hand; they are not overwritten without --force
+}
+
+// statusStages lists what status reports, in pipeline order.
+var statusStages = []struct{ name, what string }{
+	{extract.Stage, "страницы"},
+	{chapters.Stage, "chapters.json и главы"},
+	{StageTranslate, "фрагменты перевода"},
+	{StageTranslated, "переведённые главы"},
+	{StageSynth, "сегменты озвучки"},
+	{StageBuild, "аудио глав и книги"},
+}
+
+// editableStages are the stages whose results may be edited by hand.
+var editableStages = []string{chapters.Stage, StageTranslated}
+
+// ReadStatus collects the state of the book from its manifest.
+func ReadStatus(ws *workspace.Workspace) (Status, error) {
+	st := Status{Dir: ws.Dir}
+	m := ws.Manifest
+	for _, s := range statusStages {
+		st.Stages = append(st.Stages, StageStatus{Name: s.name, What: s.what, Counts: m.Counts(s.name)})
+		for _, id := range m.UnitIDs(s.name) {
+			u, _ := m.Unit(s.name, id)
+			if u.Status == workspace.StatusFailed {
+				st.Failures = append(st.Failures, Failure{
+					Stage:   s.name,
+					Chapter: u.Chapter,
+					Error:   u.Error,
+					Out:     filepath.Join(ws.Dir, filepath.FromSlash(u.Out)),
+				})
+			}
+		}
+	}
+	for _, stage := range editableStages {
+		for _, id := range m.UnitIDs(stage) {
+			edited, err := m.Edited(stage, id)
+			if err != nil {
+				return st, err
+			}
+			if edited {
+				u, _ := m.Unit(stage, id)
+				st.Edited = append(st.Edited, filepath.Join(ws.Dir, filepath.FromSlash(u.Out)))
+			}
+		}
+	}
+	return st, nil
+}
+
+// Write prints the status as a table followed by the failures and the
+// hand-edited files.
+func (st Status) Write(w io.Writer) {
+	fmt.Fprintf(w, "Книга: %s\n\n", st.Dir)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "Этап\tЧто\tВсего\tГотово\tОшибок")
+	for _, s := range st.Stages {
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\n", s.Name, s.What, s.Counts.Total, s.Counts.Done, s.Counts.Failed)
+	}
+	tw.Flush()
+
+	if len(st.Failures) > 0 {
+		fmt.Fprintln(w, "\nОшибки:")
+		for _, f := range st.Failures {
+			where := f.Stage
+			if f.Chapter != "" {
+				where += " " + f.Chapter
+			}
+			fmt.Fprintf(w, "  %s: %s\n    результат можно положить вручную: %s\n", where, f.Error, f.Out)
+		}
+	}
+	if len(st.Edited) > 0 {
+		fmt.Fprintln(w, "\nИзменены вручную (не перезаписываются без --force):")
+		for _, path := range st.Edited {
+			fmt.Fprintf(w, "  %s\n", path)
+		}
+	}
+}
