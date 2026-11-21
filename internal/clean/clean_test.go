@@ -196,6 +196,31 @@ func TestParagraphs(t *testing.T) {
 			lines: page(1, "* * *\n\nA Subheading\n\nText follows here."),
 			want:  []string{"* * *", "A Subheading", "Text follows here."},
 		},
+		{
+			name:  "drop cap is joined to its word",
+			lines: page(1, "A Heading\n\nO\n\nnce the lamp was lit, the keeper waited.\n\nNext paragraph."),
+			want:  []string{"A Heading", "Once the lamp was lit, the keeper waited.", "Next paragraph."},
+		},
+		{
+			name:  "drop cap after an opening quote",
+			lines: page(1, "“W\n\nhat a night,” he said."),
+			want:  []string{"“What a night,” he said."},
+		},
+		{
+			name:  "cyrillic drop cap",
+			lines: page(1, "О\n\nднажды вечером он поднялся наверх."),
+			want:  []string{"Однажды вечером он поднялся наверх."},
+		},
+		{
+			name:  "a single letter before a capital is not a drop cap",
+			lines: page(1, "A\n\nThe first answer.\n\nB\n\nThe second answer."),
+			want:  []string{"A", "The first answer.", "B", "The second answer."},
+		},
+		{
+			name:  "a single letter at the end stays",
+			lines: page(1, "Some text.\n\nI"),
+			want:  []string{"Some text.", "I"},
+		},
 		{name: "no lines", lines: nil, want: nil},
 		{name: "blank lines only", lines: page(1, "\n\n"), want: nil},
 	}

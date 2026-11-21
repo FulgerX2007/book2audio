@@ -49,7 +49,36 @@ func Paragraphs(lines []Line) []string {
 		}
 	}
 	flush()
-	return paragraphs
+	return joinDropCaps(paragraphs)
+}
+
+// joinDropCaps puts a drop cap back onto its word. The large first letter
+// of a chapter is a separate object in the PDF, so pdftotext prints it as a
+// paragraph of its own: "O", then "nce upon a time". A paragraph that is a
+// single capital letter (after an optional opening quote) is joined to the
+// next one when that starts with a lower-case letter.
+func joinDropCaps(paragraphs []string) []string {
+	out := paragraphs[:0:0]
+	for i := 0; i < len(paragraphs); i++ {
+		p := paragraphs[i]
+		if i+1 < len(paragraphs) && isDropCap(p) {
+			if first, _ := utf8.DecodeRuneInString(paragraphs[i+1]); unicode.IsLower(first) {
+				out = append(out, p+paragraphs[i+1])
+				i++
+				continue
+			}
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// isDropCap reports whether the paragraph is one capital letter, possibly
+// after an opening quotation mark.
+func isDropCap(p string) bool {
+	p = strings.TrimLeft(p, "\"'“‘«")
+	r, size := utf8.DecodeRuneInString(p)
+	return size > 0 && size == len(p) && unicode.IsUpper(r)
 }
 
 // UsualWidth estimates the width of a full line: the 90th percentile of the

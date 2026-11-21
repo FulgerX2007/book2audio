@@ -12,24 +12,27 @@ const (
 	systemTemplate = `You are a professional literary translator. Translate the text from {source} into {target}.
 
 Rules:
-- Translate everything; do not omit, shorten or add anything.
+- Translate only what stands between <text> and </text> in the user message, and all of it; do not omit, shorten or add anything.
 - Keep the paragraph breaks. Paragraphs are separated by a blank line; the translation must have the same number of paragraphs in the same order.
 - A line that starts with "# " is a heading: keep the "# " prefix and translate the heading.
 - Write natural, fluent {target}, as a book meant to be read aloud.
-- Output only the translation: no notes, no explanations, no quotation marks around the whole text.`
+- Output only the translation: no notes, no explanations, no tags, no quotation marks around the whole text.`
 
 	glossaryTemplate = `
 
 Use these translations of names and terms, in the right grammatical form:`
 
-	contextTemplate = `The passage before the text, for context only. Do not translate it and do not repeat it:
-<context>
-{context}
-</context>
+	// The context goes into the system message, away from the text: placed
+	// right before the text in the user message it was sometimes translated
+	// instead of the text.
+	contextTemplate = `
 
-`
-	textTemplate = `Translate this text:
-<text>
+For continuity only: the book continues from the passage below, which is already translated. Never translate it and never repeat it.
+<previous>
+{context}
+</previous>`
+
+	textTemplate = `<text>
 {text}
 </text>`
 )
@@ -72,15 +75,13 @@ func BuildMessages(req Request) []Message {
 		}
 	}
 
-	var user strings.Builder
 	if ctx := strings.TrimSpace(req.PrevContext); ctx != "" {
-		user.WriteString(strings.Replace(contextTemplate, "{context}", ctx, 1))
+		system.WriteString(strings.Replace(contextTemplate, "{context}", ctx, 1))
 	}
-	user.WriteString(strings.Replace(textTemplate, "{text}", req.Text, 1))
 
 	return []Message{
 		{Role: "system", Content: system.String()},
-		{Role: "user", Content: user.String()},
+		{Role: "user", Content: strings.Replace(textTemplate, "{text}", req.Text, 1)},
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 // RulesVersion identifies the cleaning rules. It is part of the input hash
 // of the chapters stage: bump it when the rules change, so the chapter
 // files are rebuilt.
-const RulesVersion = "1"
+const RulesVersion = "2"
 
 // minRepeats is how many pages must start (or end) with the same line for
 // it to be taken as a running header (or footer).
