@@ -17,6 +17,7 @@ import (
 	"github.com/FulgerX2007/book2audio/internal/extract"
 	"github.com/FulgerX2007/book2audio/internal/pipeline"
 	"github.com/FulgerX2007/book2audio/internal/translate"
+	"github.com/FulgerX2007/book2audio/internal/tts"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
@@ -232,11 +233,13 @@ type Deps struct {
 	Runner execx.Runner
 	// NewTranslator creates the translation backend of a book.
 	NewTranslator func(cfg config.Translate) (translate.Translator, error)
+	// NewSynthesizer creates the speech backend of a book.
+	NewSynthesizer func(cfg config.TTS, runner execx.Runner) (tts.Synthesizer, error)
 }
 
 // DefaultDeps returns the real dependencies: processes and network.
 func DefaultDeps() Deps {
-	return Deps{Runner: execx.OSRunner{}, NewTranslator: translate.New}
+	return Deps{Runner: execx.OSRunner{}, NewTranslator: translate.New, NewSynthesizer: tts.New}
 }
 
 // Builtin returns the book2audio subcommands in pipeline order.
@@ -248,7 +251,7 @@ func Builtin(deps Deps) []Command {
 		{Name: "extract", Args: book, Summary: "извлечь текст по страницам (сканы — через OCR)", Setup: setupExtract(runner)},
 		{Name: "chapters", Args: book, Summary: "очистить текст и разбить его на главы", Setup: setupChapters},
 		{Name: "translate", Args: book, Summary: "перевести главы", Setup: setupTranslate(deps)},
-		{Name: "synth", Args: book, Summary: "озвучить переведённые главы", Setup: stub},
+		{Name: "synth", Args: book, Summary: "озвучить переведённые главы", Setup: setupSynth(deps)},
 		{Name: "build", Args: book, Summary: "собрать аудиокнигу (M4B или MP3)", Setup: stub},
 		{Name: "run", Args: book, Summary: "выполнить все этапы подряд", Setup: stub},
 		{Name: "status", Args: book, Summary: "показать состояние книги по этапам", Setup: stub},
@@ -336,6 +339,32 @@ func setupTranslate(deps Deps) func(*flag.FlagSet) RunFunc {
 			res, err := pipeline.Translate(ctx, ws, tr, inv.Log, pipeline.TranslateOptions{Chapter: *chapter})
 			fmt.Fprintf(inv.Stdout, "Глав: %d, фрагментов: %d, переведено сейчас: %d, с ошибкой: %d, собрано глав: %d, оставлено с ручными правками: %d\n",
 				res.Chapters, res.Chunks, res.Translated, res.Failed, res.Assembled, res.Kept)
+			return err
+		}
+	}
+}
+
+// setupSynth is the Setup of "synth".
+func setupSynth(deps Deps) func(*flag.FlagSet) RunFunc {
+	return func(fs *flag.FlagSet) RunFunc {
+		chapter := fs.Int("chapter", pipeline.AllChapters, "озвучить только главу с этим номером")
+		return func(ctx context.Context, inv *Invocation) error {
+			ws, err := openBook(inv)
+			if err != nil {
+				return err
+			}
+			defer ws.Close()
+
+			if err := ws.Config.RequireTTS(); err != nil {
+				return err
+			}
+			syn, err := deps.NewSynthesizer(ws.Config.TTS, deps.Runner)
+			if err != nil {
+				return err
+			}
+			res, err := pipeline.Synth(ctx, ws, syn, inv.Log, pipeline.SynthOptions{Chapter: *chapter})
+			fmt.Fprintf(inv.Stdout, "Глав: %d, сегментов: %d, озвучено сейчас: %d, с ошибкой: %d\n",
+				res.Chapters, res.Segments, res.Synthesized, res.Failed)
 			return err
 		}
 	}

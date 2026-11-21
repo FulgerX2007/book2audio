@@ -15,6 +15,7 @@ import (
 	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/translate"
+	"github.com/FulgerX2007/book2audio/internal/tts"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
@@ -400,7 +401,7 @@ func TestInitCommand(t *testing.T) {
 func TestStageCommandsOpenTheBook(t *testing.T) {
 	stages := []string{"extract", "chapters", "translate", "synth", "build", "run", "status"}
 	// Stages that are still stubs; the list shrinks as stages are implemented.
-	stubs := []string{"synth", "build", "run", "status"}
+	stubs := []string{"build", "run", "status"}
 
 	t.Run("initialised book reaches the stage", func(t *testing.T) {
 		pdf, workdir := writeBook(t)
@@ -516,9 +517,11 @@ func TestExtractCommand(t *testing.T) {
 	const filler = " — a page with enough plain text to have a real text layer\n"
 	fake.Stub("pdftotext", []byte("first page"+filler+"\fsecond page"+filler+"\f"), nil)
 	tr := &translate.FakeTranslator{}
+	syn := &tts.FakeSynthesizer{}
 	app, stdout, stderr := newTestApp(Builtin(Deps{
-		Runner:        fake,
-		NewTranslator: func(config.Translate) (translate.Translator, error) { return tr, nil },
+		Runner:         fake,
+		NewTranslator:  func(config.Translate) (translate.Translator, error) { return tr, nil },
+		NewSynthesizer: func(config.TTS, execx.Runner) (tts.Synthesizer, error) { return syn, nil },
 	})...)
 
 	if code := app.Run(context.Background(), []string{"init", pdf, "--workdir", workdir}); code != ExitOK {
@@ -570,6 +573,23 @@ func TestExtractCommand(t *testing.T) {
 	}
 	if code := app.Run(context.Background(), []string{"translate", pdf, "--workdir", workdir, "--chapter", "7"}); code != ExitError {
 		t.Errorf("translate of an unknown chapter: exit code = %d, want %d", code, ExitError)
+	}
+
+	// Speech needs the engine arguments in the book config.
+	if code := app.Run(context.Background(), []string{"synth", pdf, "--workdir", workdir}); code != ExitError ||
+		!strings.Contains(stderr.String(), "tts.args") {
+		t.Errorf("synth without engine arguments: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	if err := os.WriteFile(bookConfig, []byte("translate:\n  model: test-model\ntts:\n  args: [\"-f\", \"{out}\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if code := app.Run(context.Background(), []string{"synth", pdf, "--workdir", workdir}); code != ExitOK {
+		t.Fatalf("synth: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	// The chapter is a title and one paragraph: two segments.
+	if !strings.Contains(stdout.String(), "сегментов: 2, озвучено сейчас: 2") || syn.Calls() != 2 {
+		t.Errorf("synthesizer calls = %d; stdout:\n%s", syn.Calls(), stdout.String())
 	}
 
 	// A failing tool makes the subcommand fail.
