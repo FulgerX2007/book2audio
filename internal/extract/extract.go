@@ -77,7 +77,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, log 
 	}
 
 	if len(hashes) > 0 {
-		log.Info("извлечение текста", "pages", info.Pages, "todo", len(hashes))
+		log.Info("extracting text", "pages", info.Pages, "todo", len(hashes))
 		pages, err := ReadPages(ctx, runner, ws.PDF, info.Pages)
 		if err != nil {
 			return res, err
@@ -86,7 +86,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, log 
 		save := func(n int, text string, ocr bool) error {
 			out := ws.PagePath(n)
 			if err := workspace.WriteFileAtomic(out, []byte(text), 0o644); err != nil {
-				return fmt.Errorf("страница %d: %w", n, err)
+				return fmt.Errorf("page %d: %w", n, err)
 			}
 			return ws.Manifest.MarkDone(Stage, UnitID(n), workspace.Unit{In: hashes[n], OCR: ocr}, out)
 		}
@@ -112,7 +112,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, log 
 		}
 
 		if len(scanned) > 0 {
-			log.Info("распознавание страниц без текстового слоя", "pages", len(scanned), "lang", ocrLang)
+			log.Info("recognising pages without a text layer", "pages", len(scanned), "lang", ocrLang)
 			if err := checkOCRLang(ctx, runner, ocrLang); err != nil {
 				return res, err
 			}
@@ -129,7 +129,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, log 
 					if ctx.Err() != nil {
 						return ctx.Err() // interrupted, not a failure of this page
 					}
-					log.Warn("страница не распознана", "page", n, "err", err)
+					log.Warn("page not recognised", "page", n, "err", err)
 					mu.Lock()
 					res.Failed++
 					mu.Unlock()
@@ -154,7 +154,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, log 
 		return res, err
 	}
 	if res.Failed > 0 {
-		return res, fmt.Errorf("%w: извлечение, страниц с ошибкой: %d", workspace.ErrUnitsFailed, res.Failed)
+		return res, fmt.Errorf("%w: extract, failed pages: %d", workspace.ErrUnitsFailed, res.Failed)
 	}
 	return res, nil
 }
@@ -162,7 +162,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, log 
 // ReadInfo runs pdfinfo on the PDF.
 func ReadInfo(ctx context.Context, runner execx.Runner, pdf string) (Info, error) {
 	if _, err := os.Stat(pdf); err != nil {
-		return Info{}, fmt.Errorf("исходный PDF: %w", err)
+		return Info{}, fmt.Errorf("source PDF: %w", err)
 	}
 	out, err := runner.Run(ctx, execx.Cmd{Name: "pdfinfo", Args: []string{"-enc", "UTF-8", pdf}})
 	if err != nil {
@@ -189,13 +189,13 @@ func parseInfo(out []byte) (Info, error) {
 		case "Pages":
 			n, err := strconv.Atoi(value)
 			if err != nil || n < 1 {
-				return Info{}, fmt.Errorf("pdfinfo: непонятное число страниц %q", value)
+				return Info{}, fmt.Errorf("pdfinfo: cannot read the page count %q", value)
 			}
 			info.Pages, pagesSeen = n, true
 		}
 	}
 	if !pagesSeen {
-		return Info{}, fmt.Errorf("pdfinfo: в выводе нет числа страниц")
+		return Info{}, fmt.Errorf("pdfinfo: the output has no page count")
 	}
 	return info, nil
 }
@@ -209,7 +209,7 @@ func ReadPages(ctx context.Context, runner execx.Runner, pdf string, wantPages i
 	}
 	pages := splitPages(out)
 	if len(pages) != wantPages {
-		return nil, fmt.Errorf("pdftotext вернул страниц: %d, а pdfinfo сообщает %d", len(pages), wantPages)
+		return nil, fmt.Errorf("pdftotext returned %d pages but pdfinfo reports %d", len(pages), wantPages)
 	}
 	return pages, nil
 }

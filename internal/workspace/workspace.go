@@ -37,10 +37,10 @@ const (
 )
 
 // ErrNotInitialized is returned by Open when the book has no working folder.
-var ErrNotInitialized = errors.New("рабочая папка книги не найдена, сначала выполните init")
+var ErrNotInitialized = errors.New("the working folder of the book is not found, run init first")
 
-const glossaryTemplate = `# Глоссарий: как переводить имена и термины.
-# Правка термина пересчитывает только фрагменты, в которых он встречается.
+const glossaryTemplate = `# Glossary: how to translate names and terms.
+# Editing a term re-translates only the chunks that mention it.
 #
 # terms:
 #   - source: Mr. Darcy
@@ -107,10 +107,10 @@ func Init(pdfPath string, opts InitOptions) (*Workspace, error) {
 	if slug == "" {
 		slug = Slug(strings.TrimSuffix(filepath.Base(pdfPath), filepath.Ext(pdfPath)))
 		if slug == "" {
-			return nil, fmt.Errorf("из имени файла %q не получается имя рабочей папки, задайте его флагом --slug", filepath.Base(pdfPath))
+			return nil, fmt.Errorf("cannot derive a working folder name from the file name %q, set it with --slug", filepath.Base(pdfPath))
 		}
 	} else if Slug(slug) != slug {
-		return nil, fmt.Errorf("недопустимое значение --slug %q, подойдёт %q", slug, Slug(slug))
+		return nil, fmt.Errorf("invalid --slug %q, %q would do", slug, Slug(slug))
 	}
 
 	workdir := opts.Workdir
@@ -121,7 +121,7 @@ func Init(pdfPath string, opts InitOptions) (*Workspace, error) {
 
 	if hdr, err := readHeader(dir); err == nil {
 		if hdr.Source.SHA256 != sum {
-			return nil, fmt.Errorf("папка %s уже занята другой книгой (%s), задайте другое имя флагом --slug", dir, hdr.Source.Path)
+			return nil, fmt.Errorf("folder %s belongs to another book (%s), choose another name with --slug", dir, hdr.Source.Path)
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
@@ -135,7 +135,7 @@ func Init(pdfPath string, opts InitOptions) (*Workspace, error) {
 		outDir,
 	} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
-			return nil, fmt.Errorf("создание рабочей папки: %w", err)
+			return nil, fmt.Errorf("creating the working folder: %w", err)
 		}
 	}
 
@@ -178,7 +178,7 @@ func Init(pdfPath string, opts InitOptions) (*Workspace, error) {
 func Open(arg string, opts OpenOptions) (*Workspace, error) {
 	info, err := os.Stat(arg)
 	if err != nil {
-		return nil, fmt.Errorf("книга: %w", err)
+		return nil, fmt.Errorf("book: %w", err)
 	}
 
 	var dir string
@@ -187,7 +187,7 @@ func Open(arg string, opts OpenOptions) (*Workspace, error) {
 		dir = arg
 		if hdr, err = readHeader(dir); err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
-				return nil, fmt.Errorf("%w (%s не рабочая папка)", ErrNotInitialized, dir)
+				return nil, fmt.Errorf("%w (%s is not a working folder)", ErrNotInitialized, dir)
 			}
 			return nil, err
 		}
@@ -197,13 +197,13 @@ func Open(arg string, opts OpenOptions) (*Workspace, error) {
 		}
 	}
 	if hdr.Version != ManifestVersion {
-		return nil, fmt.Errorf("%s: версия манифеста %d не поддерживается (нужна %d)",
+		return nil, fmt.Errorf("%s: manifest version %d is not supported (need %d)",
 			filepath.Join(dir, manifestName), hdr.Version, ManifestVersion)
 	}
 	// Every path handed out by the workspace is absolute, so it means the
 	// same file for the manifest, for external tools and after a chdir.
 	if dir, err = filepath.Abs(dir); err != nil {
-		return nil, fmt.Errorf("книга: %w", err)
+		return nil, fmt.Errorf("book: %w", err)
 	}
 
 	cfgPath := opts.ConfigPath
@@ -223,7 +223,7 @@ func Open(arg string, opts OpenOptions) (*Workspace, error) {
 		// The book was opened by its PDF: use that file even if it has
 		// been moved since init (its content was checked against the manifest).
 		if pdf, err = filepath.Abs(arg); err != nil {
-			return nil, fmt.Errorf("книга: %w", err)
+			return nil, fmt.Errorf("book: %w", err)
 		}
 	}
 	return &Workspace{Dir: dir, Config: cfg, Source: hdr.Source, PDF: pdf, Manifest: manifest}, nil
@@ -254,7 +254,7 @@ func findByPDF(pdfPath string, opts OpenOptions) (string, manifestHeader, error)
 			return dir, hdr, nil
 		case err == nil:
 			return "", manifestHeader{}, fmt.Errorf(
-				"%s создана для другого файла (%s): содержимое %s не совпадает с записанным в манифесте",
+				"%s was created for another file (%s): the content of %s differs from the one recorded in the manifest",
 				dir, hdr.Source.Path, pdfPath)
 		case !errors.Is(err, fs.ErrNotExist):
 			return "", manifestHeader{}, err
@@ -264,7 +264,7 @@ func findByPDF(pdfPath string, opts OpenOptions) (string, manifestHeader, error)
 	// The folder may have been created with --slug: look for the same file.
 	entries, err := os.ReadDir(workdir)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return "", manifestHeader{}, fmt.Errorf("книга: %w", err)
+		return "", manifestHeader{}, fmt.Errorf("book: %w", err)
 	}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -404,7 +404,7 @@ func configBytes(path string, cfg config.Config) ([]byte, error) {
 	if path != "" {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("конфиг: %w", err)
+			return nil, fmt.Errorf("config: %w", err)
 		}
 		return data, nil
 	}
@@ -419,7 +419,7 @@ func readHeader(dir string) (manifestHeader, error) {
 	}
 	var hdr manifestHeader
 	if err := json.Unmarshal(data, &hdr); err != nil {
-		return manifestHeader{}, fmt.Errorf("%s повреждён: %w", path, err)
+		return manifestHeader{}, fmt.Errorf("%s is damaged: %w", path, err)
 	}
 	return hdr, nil
 }
@@ -428,20 +428,20 @@ func readHeader(dir string) (manifestHeader, error) {
 func hashPDF(path string) (sum, abs string, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", "", fmt.Errorf("книга: %w", err)
+		return "", "", fmt.Errorf("book: %w", err)
 	}
 	defer f.Close()
 	if info, err := f.Stat(); err != nil {
-		return "", "", fmt.Errorf("книга: %w", err)
+		return "", "", fmt.Errorf("book: %w", err)
 	} else if !info.Mode().IsRegular() {
-		return "", "", fmt.Errorf("книга: %s не является файлом", path)
+		return "", "", fmt.Errorf("book: %s is not a file", path)
 	}
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return "", "", fmt.Errorf("книга: %w", err)
+		return "", "", fmt.Errorf("book: %w", err)
 	}
 	if abs, err = filepath.Abs(path); err != nil {
-		return "", "", fmt.Errorf("книга: %w", err)
+		return "", "", fmt.Errorf("book: %w", err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), abs, nil
 }

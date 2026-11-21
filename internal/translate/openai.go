@@ -17,7 +17,7 @@ import (
 )
 
 // ErrEmptyResponse is returned when the model answers with no text.
-var ErrEmptyResponse = errors.New("модель вернула пустой ответ")
+var ErrEmptyResponse = errors.New("the model returned an empty answer")
 
 const (
 	requestTimeout = 5 * time.Minute
@@ -47,7 +47,7 @@ type OpenAI struct {
 // are sent unauthenticated, which is what local servers expect.
 func NewOpenAI(cfg config.Translate) (*OpenAI, error) {
 	if strings.TrimSpace(cfg.Model) == "" {
-		return nil, errors.New("translate.model: не задано")
+		return nil, errors.New("translate.model: is not set")
 	}
 	var key string
 	if cfg.APIKeyEnv != "" {
@@ -114,7 +114,7 @@ func (o *OpenAI) Translate(ctx context.Context, req Request) (string, error) {
 			return "", err
 		}
 		if attempt >= o.maxRetries {
-			return "", fmt.Errorf("перевод не удался после %d попыток: %w", attempt+1, retry.err)
+			return "", fmt.Errorf("translation failed after %d attempts: %w", attempt+1, retry.err)
 		}
 		pause := retry.after
 		if pause == 0 {
@@ -144,16 +144,16 @@ func (o *OpenAI) send(ctx context.Context, body []byte) (string, error) {
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		return "", &retryable{err: fmt.Errorf("запрос к %s: %w", o.url, err)}
+		return "", &retryable{err: fmt.Errorf("request to %s: %w", o.url, err)}
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", &retryable{err: fmt.Errorf("чтение ответа %s: %w", o.url, err)}
+		return "", &retryable{err: fmt.Errorf("reading the response of %s: %w", o.url, err)}
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		err := fmt.Errorf("сервер перевода ответил %s: %s", resp.Status, errorText(data))
+		err := fmt.Errorf("the translation server answered %s: %s", resp.Status, errorText(data))
 		switch {
 		case resp.StatusCode == http.StatusRequestTimeout,
 			resp.StatusCode == http.StatusTooManyRequests,
@@ -165,10 +165,10 @@ func (o *OpenAI) send(ctx context.Context, body []byte) (string, error) {
 
 	var parsed chatResponse
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		return "", fmt.Errorf("ответ сервера перевода не разобран: %w", err)
+		return "", fmt.Errorf("cannot parse the translation server response: %w", err)
 	}
 	if parsed.Error != nil && parsed.Error.Message != "" {
-		return "", fmt.Errorf("сервер перевода сообщил об ошибке: %s", parsed.Error.Message)
+		return "", fmt.Errorf("the translation server reported an error: %s", parsed.Error.Message)
 	}
 	if len(parsed.Choices) == 0 {
 		return "", ErrEmptyResponse

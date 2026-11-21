@@ -273,7 +273,7 @@ func TestE2EEditedChapterBoundaries(t *testing.T) {
 	if got := readFile(t, ch3); got != byHand {
 		t.Errorf("the hand-edited chapter was overwritten:\n%s", got)
 	}
-	if !strings.Contains(log.String(), "оставлено с ручными правками 1") {
+	if !strings.Contains(log.String(), "1 kept with hand edits") {
 		t.Errorf("the run does not report the kept chapter:\n%s", log.String())
 	}
 

@@ -81,7 +81,7 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 		selected = true
 		text, err := os.ReadFile(ws.TranslatedChapterPath(s.N))
 		if errors.Is(err, fs.ErrNotExist) {
-			return res, fmt.Errorf("глава %d ещё не переведена: сначала выполните translate", s.N)
+			return res, fmt.Errorf("chapter %d is not translated yet: run translate first", s.N)
 		}
 		if err != nil {
 			return res, err
@@ -120,7 +120,7 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 		refsByChapter[s.N] = refs
 	}
 	if opts.Chapter != AllChapters && !selected {
-		return res, fmt.Errorf("главы %d нет в chapters.json", opts.Chapter)
+		return res, fmt.Errorf("chapter %d is not in chapters.json", opts.Chapter)
 	}
 
 	// The segment lists are written before any audio is made: status can
@@ -137,7 +137,7 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 	}
 
 	if len(jobs) > 0 {
-		log.Info("озвучка", "segments", len(jobs), "workers", ws.Config.TTS.Workers)
+		log.Info("synthesising", "segments", len(jobs), "workers", ws.Config.TTS.Workers)
 	}
 	if err := accentJobs(ctx, ws, opts.Runner, jobs, log); err != nil {
 		return res, err
@@ -151,7 +151,7 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 			if ctx.Err() != nil {
 				return ctx.Err() // interrupted, not a failure of this segment
 			}
-			log.Warn("сегмент не озвучен", "chapter", unit.Chapter, "err", synthErr, "text", preview(job.text))
+			log.Warn("segment not synthesised", "chapter", unit.Chapter, "err", synthErr, "text", preview(job.text))
 			mu.Lock()
 			res.Failed++
 			mu.Unlock()
@@ -165,7 +165,7 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 		done := res.Synthesized
 		mu.Unlock()
 		if done%progressEvery == 0 {
-			log.Info("озвучено сегментов", "done", done, "of", len(jobs))
+			log.Info("segments synthesised", "done", done, "of", len(jobs))
 		}
 		return nil
 	}
@@ -208,7 +208,7 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 		}
 	}
 	if res.Failed > 0 {
-		return res, fmt.Errorf("%w: озвучка, сегментов с ошибкой: %d", workspace.ErrUnitsFailed, res.Failed)
+		return res, fmt.Errorf("%w: synth, failed segments: %d", workspace.ErrUnitsFailed, res.Failed)
 	}
 	return res, nil
 }
@@ -240,7 +240,7 @@ func accentJobs(ctx context.Context, ws *workspace.Workspace, runner execx.Runne
 		return nil
 	}
 	if runner == nil {
-		return errors.New("tts.accent_command задана, но запуск внешних команд не настроен")
+		return errors.New("tts.accent_command is set but no command runner is configured")
 	}
 	var input strings.Builder
 	for _, job := range jobs {
@@ -250,22 +250,22 @@ func accentJobs(ctx context.Context, ws *workspace.Workspace, runner execx.Runne
 		input.WriteByte('\n')
 	}
 
-	log.Info("расстановка ударений", "segments", len(jobs), "command", cfg.AccentCommand)
+	log.Info("marking stress", "segments", len(jobs), "command", cfg.AccentCommand)
 	out, err := runner.Run(ctx, execx.Cmd{Name: cfg.AccentCommand, Args: cfg.AccentArgs, Stdin: strings.NewReader(input.String())})
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return fmt.Errorf("расстановка ударений (tts.accent_command): %w", err)
+		return fmt.Errorf("stress marking (tts.accent_command): %w", err)
 	}
 	lines := strings.Split(strings.TrimRight(strings.ReplaceAll(string(out), "\r\n", "\n"), "\n"), "\n")
 	if len(lines) != len(jobs) {
-		return fmt.Errorf("расстановка ударений: команда %s вернула строк: %d, а сегментов %d — на каждую строку ввода нужна одна строка вывода",
+		return fmt.Errorf("stress marking: command %s returned %d lines for %d segments; it must print one line per input line",
 			cfg.AccentCommand, len(lines), len(jobs))
 	}
 	for i, line := range lines {
 		if line = strings.TrimSpace(line); line == "" {
-			return fmt.Errorf("расстановка ударений: команда %s вернула пустую строку для сегмента %d", cfg.AccentCommand, i+1)
+			return fmt.Errorf("stress marking: command %s returned an empty line for segment %d", cfg.AccentCommand, i+1)
 		} else {
 			jobs[i].text = line
 		}
@@ -278,7 +278,7 @@ func LoadSegments(ws *workspace.Workspace, n int) ([]SegmentRef, error) {
 	path := ws.SegmentsJSONPath(n)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("глава %d ещё не озвучена: сначала выполните synth", n)
+		return nil, fmt.Errorf("chapter %d is not synthesised yet: run synth first", n)
 	}
 	if err != nil {
 		return nil, err

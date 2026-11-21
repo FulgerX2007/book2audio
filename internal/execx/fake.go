@@ -53,7 +53,7 @@ func (f *FakeRunner) Run(ctx context.Context, cmd Cmd) ([]byte, error) {
 	if cmd.Stdin != nil {
 		input, err := io.ReadAll(cmd.Stdin)
 		if err != nil {
-			return nil, fmt.Errorf("%s: чтение stdin: %w", cmd.Name, err)
+			return nil, fmt.Errorf("%s: reading stdin: %w", cmd.Name, err)
 		}
 		call.Input = input
 	}

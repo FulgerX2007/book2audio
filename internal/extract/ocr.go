@@ -29,7 +29,7 @@ func checkOCRLang(ctx context.Context, runner execx.Runner, lang string) error {
 	installed := strings.Fields(string(out))
 	for want := range strings.SplitSeq(lang, "+") {
 		if !slices.Contains(installed, want) {
-			return fmt.Errorf("в tesseract нет языковых данных %q: установите их (пакет tesseract-ocr-%s) или задайте extract.ocr_lang", want, want)
+			return fmt.Errorf("tesseract has no language data %q: install it (package tesseract-ocr-%s) or set extract.ocr_lang", want, want)
 		}
 	}
 	return nil

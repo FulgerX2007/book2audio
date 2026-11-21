@@ -132,25 +132,25 @@ func fallback(pages [][]clean.Line, toc map[int]bool, size int) []Start {
 // Validate checks a list of chapter starts, as read from chapters.json.
 func Validate(starts []Start, pages int) error {
 	if len(starts) == 0 {
-		return fmt.Errorf("список глав пуст")
+		return fmt.Errorf("the chapter list is empty")
 	}
 	seen := make(map[int]bool)
 	for i, s := range starts {
 		switch {
 		case s.N < 0:
-			return fmt.Errorf("глава %d: номер не может быть отрицательным", s.N)
+			return fmt.Errorf("chapter %d: the number must not be negative", s.N)
 		case seen[s.N]:
-			return fmt.Errorf("глава %d встречается дважды", s.N)
+			return fmt.Errorf("chapter %d is listed twice", s.N)
 		case strings.TrimSpace(s.Title) == "":
-			return fmt.Errorf("глава %d: пустой заголовок", s.N)
+			return fmt.Errorf("chapter %d: the title is empty", s.N)
 		case s.StartPage < 1 || s.StartPage > pages:
-			return fmt.Errorf("глава %d: страница %d вне документа (страниц: %d)", s.N, s.StartPage, pages)
+			return fmt.Errorf("chapter %d: page %d is outside the document (%d pages)", s.N, s.StartPage, pages)
 		case s.StartLine < 1:
-			return fmt.Errorf("глава %d: номер строки должен быть не меньше 1", s.N)
+			return fmt.Errorf("chapter %d: the line number must be at least 1", s.N)
 		}
 		seen[s.N] = true
 		if i > 0 && !before(starts[i-1], s) {
-			return fmt.Errorf("глава %d начинается не позже главы %d: главы должны идти по порядку и не пересекаться",
+			return fmt.Errorf("chapter %d does not start after chapter %d: chapters must be in order and must not overlap",
 				s.N, starts[i-1].N)
 		}
 	}

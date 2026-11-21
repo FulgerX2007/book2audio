@@ -213,15 +213,15 @@ func TestValidate(t *testing.T) {
 		mutate func([]Start) []Start
 		want   string
 	}{
-		{"empty list", func([]Start) []Start { return nil }, "пуст"},
-		{"negative number", func(s []Start) []Start { s[0].N = -1; return s }, "отрицательным"},
-		{"duplicate number", func(s []Start) []Start { s[2].N = 1; return s }, "дважды"},
-		{"empty title", func(s []Start) []Start { s[1].Title = " "; return s }, "пустой заголовок"},
-		{"page outside the document", func(s []Start) []Start { s[2].StartPage = 6; return s }, "вне документа"},
-		{"page zero", func(s []Start) []Start { s[0].StartPage = 0; return s }, "вне документа"},
-		{"line zero", func(s []Start) []Start { s[1].StartLine = 0; return s }, "номер строки"},
-		{"same position twice", func(s []Start) []Start { s[1].StartLine = 1; return s }, "по порядку"},
-		{"out of order", func(s []Start) []Start { s[1], s[2] = s[2], s[1]; return s }, "по порядку"},
+		{"empty list", func([]Start) []Start { return nil }, "is empty"},
+		{"negative number", func(s []Start) []Start { s[0].N = -1; return s }, "must not be negative"},
+		{"duplicate number", func(s []Start) []Start { s[2].N = 1; return s }, "twice"},
+		{"empty title", func(s []Start) []Start { s[1].Title = " "; return s }, "the title is empty"},
+		{"page outside the document", func(s []Start) []Start { s[2].StartPage = 6; return s }, "outside the document"},
+		{"page zero", func(s []Start) []Start { s[0].StartPage = 0; return s }, "outside the document"},
+		{"line zero", func(s []Start) []Start { s[1].StartLine = 0; return s }, "the line number"},
+		{"same position twice", func(s []Start) []Start { s[1].StartLine = 1; return s }, "in order"},
+		{"out of order", func(s []Start) []Start { s[1], s[2] = s[2], s[1]; return s }, "in order"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -379,8 +379,8 @@ func TestRunRejectsBrokenChaptersJSON(t *testing.T) {
 		want    string
 	}{
 		{"not JSON", "{oops", "chapters.json"},
-		{"overlapping chapters", `[{"n":1,"title":"A","start_page":1,"start_line":5},{"n":2,"title":"B","start_page":1,"start_line":2}]`, "по порядку"},
-		{"page outside the document", `[{"n":1,"title":"A","start_page":9,"start_line":1}]`, "вне документа"},
+		{"overlapping chapters", `[{"n":1,"title":"A","start_page":1,"start_line":5},{"n":2,"title":"B","start_page":1,"start_line":2}]`, "in order"},
+		{"page outside the document", `[{"n":1,"title":"A","start_page":9,"start_line":1}]`, "outside the document"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -412,7 +412,7 @@ func TestRunNeedsExtractedPages(t *testing.T) {
 	}
 
 	empty := newBook(t, "", "")
-	if _, err := Run(context.Background(), empty, quiet); err == nil || !strings.Contains(err.Error(), "не найдено текста") {
+	if _, err := Run(context.Background(), empty, quiet); err == nil || !strings.Contains(err.Error(), "no text was found") {
 		t.Errorf("error = %v, want a no-text error", err)
 	}
 }

@@ -39,6 +39,6 @@ func New(cfg config.Translate) (Translator, error) {
 	case config.BackendOpenAI:
 		return NewOpenAI(cfg)
 	default:
-		return nil, fmt.Errorf("translate.backend: неизвестный бэкенд %q", cfg.Backend)
+		return nil, fmt.Errorf("translate.backend: unknown backend %q", cfg.Backend)
 	}
 }

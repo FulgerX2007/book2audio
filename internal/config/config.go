@@ -156,13 +156,13 @@ func Load(path string) (Config, error) {
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("конфиг: %w", err)
+		return Config{}, fmt.Errorf("config: %w", err)
 	}
 	defer f.Close()
 
 	cfg, err := Parse(f)
 	if err != nil {
-		return Config{}, fmt.Errorf("конфиг %s: %w", path, err)
+		return Config{}, fmt.Errorf("config %s: %w", path, err)
 	}
 	return cfg, nil
 }
@@ -175,7 +175,7 @@ func Parse(r io.Reader) (Config, error) {
 	dec.KnownFields(true)
 	// An empty document (io.EOF) means "all defaults".
 	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
-		return Config{}, fmt.Errorf("разбор YAML: %w", err)
+		return Config{}, fmt.Errorf("parsing YAML: %w", err)
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -189,7 +189,7 @@ type ValidationError struct {
 }
 
 func (e *ValidationError) Error() string {
-	return "некорректный конфиг: " + strings.Join(e.Problems, "; ")
+	return "invalid config: " + strings.Join(e.Problems, "; ")
 }
 
 // problems collects validation findings.
@@ -213,23 +213,23 @@ func (c Config) Validate() error {
 	var p problems
 
 	if strings.TrimSpace(c.SourceLang) == "" {
-		p.addf("source_lang", "не задано")
+		p.addf("source_lang", "is not set")
 	}
 	if strings.TrimSpace(c.TargetLang) == "" {
-		p.addf("target_lang", "не задано")
+		p.addf("target_lang", "is not set")
 	}
 	if strings.TrimSpace(c.Workdir) == "" {
-		p.addf("workdir", "не задано")
+		p.addf("workdir", "is not set")
 	}
 
 	if c.Extract.OCRMinChars < 0 {
-		p.addf("extract.ocr_min_chars", "не может быть отрицательным")
+		p.addf("extract.ocr_min_chars", "must not be negative")
 	}
 	if c.Extract.OCRDPI < 72 || c.Extract.OCRDPI > 1200 {
-		p.addf("extract.ocr_dpi", "должно быть от 72 до 1200")
+		p.addf("extract.ocr_dpi", "must be between 72 and 1200")
 	}
 	if c.Extract.OCRWorkers < 1 {
-		p.addf("extract.ocr_workers", "должно быть не меньше 1")
+		p.addf("extract.ocr_workers", "must be at least 1")
 	}
 	if strings.TrimSpace(c.SourceLang) != "" {
 		if _, err := c.OCRLang(); err != nil {
@@ -238,70 +238,70 @@ func (c Config) Validate() error {
 	}
 
 	if c.Chapters.HeadingRegex == "" {
-		p.addf("chapters.heading_regex", "не задано")
+		p.addf("chapters.heading_regex", "is not set")
 	} else if _, err := regexp.Compile(c.Chapters.HeadingRegex); err != nil {
-		p.addf("chapters.heading_regex", "некорректное регулярное выражение: %v", err)
+		p.addf("chapters.heading_regex", "invalid regular expression: %v", err)
 	}
 	if c.Chapters.HeadingMaxChars < 1 {
-		p.addf("chapters.heading_max_chars", "должно быть не меньше 1")
+		p.addf("chapters.heading_max_chars", "must be at least 1")
 	}
 	if c.Chapters.TOCMaxHeadings < 1 {
-		p.addf("chapters.toc_max_headings", "должно быть не меньше 1")
+		p.addf("chapters.toc_max_headings", "must be at least 1")
 	}
 	if c.Chapters.FallbackPages < 1 {
-		p.addf("chapters.fallback_pages", "должно быть не меньше 1")
+		p.addf("chapters.fallback_pages", "must be at least 1")
 	}
 
 	if !slices.Contains(translateBackends, c.Translate.Backend) {
-		p.addf("translate.backend", "неизвестный бэкенд %q (допустимо: %s)",
+		p.addf("translate.backend", "unknown backend %q (allowed: %s)",
 			c.Translate.Backend, strings.Join(translateBackends, ", "))
 	}
 	if u, err := url.Parse(c.Translate.BaseURL); err != nil ||
 		(u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		p.addf("translate.base_url", "нужен адрес вида http(s)://хост[/путь], получено %q", c.Translate.BaseURL)
+		p.addf("translate.base_url", "must be a URL like http(s)://host[/path], got %q", c.Translate.BaseURL)
 	}
 	if c.Translate.Temperature < 0 || c.Translate.Temperature > 2 {
-		p.addf("translate.temperature", "должно быть от 0 до 2")
+		p.addf("translate.temperature", "must be between 0 and 2")
 	}
 	if c.Translate.ChunkChars < 200 {
-		p.addf("translate.chunk_chars", "должно быть не меньше 200")
+		p.addf("translate.chunk_chars", "must be at least 200")
 	}
 	if c.Translate.Workers < 1 {
-		p.addf("translate.workers", "должно быть не меньше 1")
+		p.addf("translate.workers", "must be at least 1")
 	}
 	if c.Translate.MaxRetries < 0 {
-		p.addf("translate.max_retries", "не может быть отрицательным")
+		p.addf("translate.max_retries", "must not be negative")
 	}
 
 	if !slices.Contains(ttsBackends, c.TTS.Backend) {
-		p.addf("tts.backend", "неизвестный бэкенд %q (допустимо: %s)",
+		p.addf("tts.backend", "unknown backend %q (allowed: %s)",
 			c.TTS.Backend, strings.Join(ttsBackends, ", "))
 	}
 	if strings.TrimSpace(c.TTS.Command) == "" {
-		p.addf("tts.command", "не задано")
+		p.addf("tts.command", "is not set")
 	}
 	if c.TTS.Backend == BackendPiper && len(c.TTS.Args) > 0 && !c.TTS.hasOutPlaceholder() {
-		p.addf("tts.args", "нет подстановки %s для пути выходного файла", OutPlaceholder)
+		p.addf("tts.args", "has no %s placeholder for the output file path", OutPlaceholder)
 	}
 	if len(c.TTS.AccentArgs) > 0 && strings.TrimSpace(c.TTS.AccentCommand) == "" {
-		p.addf("tts.accent_args", "заданы аргументы, но не задана команда tts.accent_command")
+		p.addf("tts.accent_args", "arguments are set but tts.accent_command is not")
 	}
 	if c.TTS.SegmentChars < 100 {
-		p.addf("tts.segment_chars", "должно быть не меньше 100")
+		p.addf("tts.segment_chars", "must be at least 100")
 	}
 	if c.TTS.Workers < 1 {
-		p.addf("tts.workers", "должно быть не меньше 1")
+		p.addf("tts.workers", "must be at least 1")
 	}
 
 	if !slices.Contains(audioFormats, c.Audio.Format) {
-		p.addf("audio.format", "неизвестный формат %q (допустимо: %s)",
+		p.addf("audio.format", "unknown format %q (allowed: %s)",
 			c.Audio.Format, strings.Join(audioFormats, ", "))
 	}
 	if !bitrateRe.MatchString(c.Audio.Bitrate) {
-		p.addf("audio.bitrate", "нужно значение вида 64k, получено %q", c.Audio.Bitrate)
+		p.addf("audio.bitrate", "must look like 64k, got %q", c.Audio.Bitrate)
 	}
 	if c.Audio.ParagraphPauseMS < 0 {
-		p.addf("audio.paragraph_pause_ms", "не может быть отрицательным")
+		p.addf("audio.paragraph_pause_ms", "must not be negative")
 	}
 
 	return p.err()
@@ -312,7 +312,7 @@ func (c Config) Validate() error {
 func (c Config) RequireTranslate() error {
 	var p problems
 	if strings.TrimSpace(c.Translate.Model) == "" {
-		p.addf("translate.model", "не задано")
+		p.addf("translate.model", "is not set")
 	}
 	return p.err()
 }
@@ -324,7 +324,7 @@ func (c Config) RequireTTS() error {
 	// Only a command run per segment is told the output path in its
 	// arguments; the Silero script gets it on standard input.
 	if c.TTS.Backend == BackendPiper && !c.TTS.hasOutPlaceholder() {
-		p.addf("tts.args", "нужны аргументы запуска с подстановкой %s для пути выходного файла", OutPlaceholder)
+		p.addf("tts.args", "needs the engine arguments with the %s placeholder for the output file path", OutPlaceholder)
 	}
 	return p.err()
 }
@@ -377,5 +377,5 @@ func (c Config) OCRLang() (string, error) {
 	if lang, ok := tesseractLangs[primary]; ok {
 		return lang, nil
 	}
-	return "", fmt.Errorf("для source_lang %q нет известного кода tesseract, задайте его явно", c.SourceLang)
+	return "", fmt.Errorf("no tesseract language code is known for source_lang %q, set it explicitly", c.SourceLang)
 }

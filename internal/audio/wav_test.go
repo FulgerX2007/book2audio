@@ -159,15 +159,15 @@ func TestParseWAVErrors(t *testing.T) {
 		file []byte
 		want string
 	}{
-		{"empty file", nil, "не WAV"},
-		{"not RIFF", []byte("ID3\x04 this is an mp3 file, not a wav"), "не WAV"},
-		{"RIFF but not WAVE", append([]byte("RIFF\x04\x00\x00\x00AVI "), data...), "не WAV"},
-		{"no fmt chunk", riff(chunkBytes("LIST", []byte("info"))), "нет блока fmt"},
-		{"no data chunk", riff(fmtChunk(formatPCM, mono16, nil)), "нет блока data"},
-		{"data before fmt", riff(chunkBytes("data", data), fmtChunk(formatPCM, mono16, nil)), "раньше блока fmt"},
-		{"short fmt chunk", riff(chunkBytes("fmt ", make([]byte, 8)), chunkBytes("data", data)), "повреждён блок fmt"},
-		{"float samples", riff(fmtChunk(3, Format{SampleRate: 22050, Channels: 1, BitsPerSample: 32}, nil), chunkBytes("data", data)), "код формата 3"},
-		{"zero sample rate", riff(fmtChunk(formatPCM, Format{Channels: 1, BitsPerSample: 16}, nil), chunkBytes("data", data)), "недопустимый формат"},
+		{"empty file", nil, "not a WAV"},
+		{"not RIFF", []byte("ID3\x04 this is an mp3 file, not a wav"), "not a WAV"},
+		{"RIFF but not WAVE", append([]byte("RIFF\x04\x00\x00\x00AVI "), data...), "not a WAV"},
+		{"no fmt chunk", riff(chunkBytes("LIST", []byte("info"))), "has no fmt chunk"},
+		{"no data chunk", riff(fmtChunk(formatPCM, mono16, nil)), "has no data chunk"},
+		{"data before fmt", riff(chunkBytes("data", data), fmtChunk(formatPCM, mono16, nil)), "before the fmt chunk"},
+		{"short fmt chunk", riff(chunkBytes("fmt ", make([]byte, 8)), chunkBytes("data", data)), "the fmt chunk is damaged"},
+		{"float samples", riff(fmtChunk(3, Format{SampleRate: 22050, Channels: 1, BitsPerSample: 32}, nil), chunkBytes("data", data)), "format code 3"},
+		{"zero sample rate", riff(fmtChunk(formatPCM, Format{Channels: 1, BitsPerSample: 16}, nil), chunkBytes("data", data)), "invalid format"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

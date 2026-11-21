@@ -1,142 +1,146 @@
 # book2audio
 
-Утилита командной строки на Go: превращает PDF в русскую аудиокнигу по главам.
+A command-line tool written in Go: it turns a PDF into a Russian audiobook split by chapters.
 
 ```
-PDF → текст страниц (OCR для сканов) → главы → перевод → озвучка → M4B или MP3
+PDF → page text (OCR for scans) → chapters → translation → speech → M4B or MP3
 ```
 
-Предназначена для текстов, на которые у вас есть права: собственных документов и книг в общественном достоянии.
+It is meant for texts you have the rights to: your own documents and books in the public domain.
 
-## Что нужно установить
+## Requirements
 
-- Go 1.27 — для сборки.
-- `poppler-utils` (`pdfinfo`, `pdftotext`, `pdftoppm`) — извлечение текста.
-- `tesseract-ocr` с данными языка книги — только для страниц без текстового слоя.
-- `ffmpeg` с кодерами `aac` и `libmp3lame` — сборка аудиокниги.
-- Сервер перевода с OpenAI-совместимым API: локальный (Ollama, llama.cpp, vLLM) или облачный.
-- Движок озвучки: Silero (`pip install silero scipy`) или Piper с моделью русского голоса.
+- Go 1.27 to build.
+- `poppler-utils` (`pdfinfo`, `pdftotext`, `pdftoppm`) for text extraction.
+- `tesseract-ocr` with the data of the book's language, only for pages without a text layer.
+- `ffmpeg` with the `aac` and `libmp3lame` encoders to build the audiobook.
+- A translation server with an OpenAI-compatible API: local (Ollama, llama.cpp, vLLM) or in the cloud.
+- A speech engine: Silero (`pip install silero scipy`) or Piper with a Russian voice model.
 
-## Сборка
+## Build
 
 ```sh
-make build        # бинарник bin/book2audio
-make test         # тесты
-make race         # тесты с детектором гонок
+make build        # the bin/book2audio binary
+make test         # tests
+make race         # tests with the race detector
 ```
 
-Тесты, которым нужны внешние утилиты, пропускаются, если утилита не установлена.
+Tests that need external tools skip themselves when the tool is not installed.
 
-## Быстрый старт
+## Quick start
 
 ```sh
 cp config.example.yaml config.yaml
-# в config.yaml задайте translate.model и tts.args
+# set translate.model and tts.args in config.yaml
 
 book2audio init book.pdf --config config.yaml
 book2audio run book.pdf
 ```
 
-Результат — `work/book/out/book.m4b`. Команду `run` можно прервать и запустить снова: готовая работа не повторяется.
+The result is `work/book/out/book.m4b`. `run` can be interrupted and started again: finished work is not repeated.
 
-## Команды
+## Commands
 
 ```
-book2audio init <book.pdf> [--config cfg.yaml] [--workdir work] [--slug имя]
+book2audio init <book.pdf> [--config cfg.yaml] [--workdir work] [--slug name]
 book2audio <extract|chapters|translate|synth|build|status> <book.pdf | work/<slug>>
-book2audio run <book.pdf | work/<slug>> [--from этап] [--to этап]
+book2audio run <book.pdf | work/<slug>> [--from stage] [--to stage]
 ```
 
-| Команда | Что делает |
+| Command | What it does |
 |---|---|
-| `init` | создаёт рабочую папку книги и копирует в неё конфиг |
-| `extract` | текст каждой страницы; страницы без текста — через OCR |
-| `chapters` | убирает колонтитулы и номера страниц, делит текст на главы |
-| `translate` | переводит главы по фрагментам; `--chapter N` — одну главу |
-| `synth` | озвучивает переведённые главы; `--chapter N` — одну главу |
-| `build` | склеивает аудио глав и кодирует аудиокнигу |
-| `run` | все этапы подряд; `--from` и `--to` ограничивают их |
-| `status` | прогресс по этапам и по главам, ошибки, файлы с ручными правками |
+| `init` | creates the working folder of the book and copies the config into it |
+| `extract` | text of every page; pages without text go through OCR |
+| `chapters` | removes running headers and page numbers, splits the text into chapters |
+| `translate` | translates the chapters chunk by chunk; `--chapter N` does one chapter |
+| `synth` | synthesises the translated chapters; `--chapter N` does one chapter |
+| `build` | joins the chapter audio and encodes the audiobook |
+| `run` | all stages in order; `--from` and `--to` limit them |
+| `status` | progress by stage and by chapter, failures, files edited by hand |
 
-Общие флаги: `--config` (конфиг на один запуск), `--workdir`, `--force`, `-v`. Флаги можно писать и до, и после пути к книге.
+Common flags: `--config` (a config for one run), `--workdir`, `--force`, `-v`. Flags may be written before or after the book path.
 
-Одну книгу обрабатывает один процесс: второй запуск на той же папке завершится с ошибкой. Исключение — `status`: он только читает и работает, пока книга обрабатывается в другом окне. Для главы он показывает, сколько фрагментов переведено и сколько сегментов озвучено из общего числа, например `7/12`. Перевод и озвучка идут не по страницам, а по фрагментам текста: главы режутся на куски по `translate.chunk_chars` символов, поэтому прогресс считается в них.
+One process works on a book at a time: a second run on the same folder fails. The exception is `status`: it only reads, so it works while the book is being processed in another window. For each chapter it shows how many chunks are translated and how many segments are synthesised out of the total, for example `7/12`. Translation and speech do not go page by page: chapters are cut into chunks of `translate.chunk_chars` characters, so progress is counted in chunks.
 
-## Рабочая папка
+## Working folder
 
 ```
 work/<slug>/
-  config.yaml                         главный конфиг книги
-  glossary.yaml                     ✎ как переводить имена и термины
-  manifest.json                       состояние этапов
-  01-pages/p0001.txt …                текст страниц
-  02-chapters/chapters.json         ✎ где начинается каждая глава
-  02-chapters/ch01.md …             ✎ текст главы на языке оригинала
-  03-translated/cache/                переводы фрагментов
-  03-translated/ch01.ru.md …        ✎ перевод главы
-  04-audio/cache/                     озвученные сегменты
-  04-audio/ch01.wav …                 аудио главы
-  out/                                готовая аудиокнига
+  config.yaml                         the book's main config
+  glossary.yaml                     ✎ how to translate names and terms
+  manifest.json                       state of the stages
+  01-pages/p0001.txt …                page text
+  02-chapters/chapters.json         ✎ where each chapter starts
+  02-chapters/ch01.md …             ✎ chapter text in the source language
+  03-translated/cache/                chunk translations
+  03-translated/ch01.ru.md …        ✎ chapter translation
+  04-audio/cache/                     synthesised segments
+  04-audio/ch01.wav …                 chapter audio
+  out/                                the finished audiobook
 ```
 
-Файлы со знаком ✎ можно править руками.
+Files marked ✎ may be edited by hand.
 
-## Ручные правки
+## Hand edits
 
-Изменённый вручную файл не перезаписывается. `status` показывает такие файлы, `--force` пересоздаёт их из исходных данных.
+A file edited by hand is not overwritten. `status` lists such files; `--force` rebuilds them from the source data.
 
-| Что изменили | Что пересчитается при следующем запуске |
+| What you changed | What is redone on the next run |
 |---|---|
-| `chapters.json` | главы собираются по новым границам |
-| `chNN.md` | перевод от места правки до конца этой главы |
-| `chNN.ru.md` | озвучка только изменённых абзацев |
-| `glossary.yaml` | перевод фрагментов, где встречается изменённый термин |
-| модель, промпт, языки | весь перевод |
-| голос (`tts.args`), команда ударений | вся озвучка |
-| `audio.bitrate`, `audio.format`, теги | только кодирование |
+| `chapters.json` | chapters are rebuilt from the new starts |
+| `chNN.md` | translation from the edit to the end of that chapter |
+| `chNN.ru.md` | speech for the changed paragraphs only |
+| `glossary.yaml` | translation of the chunks that mention the changed term |
+| model, prompt, languages | the whole translation |
+| voice (`tts.args`), stress command | all speech |
+| `audio.bitrate`, `audio.format`, tags | encoding only |
 
-Отмена правки ничего не стоит: прежние переводы и аудио остаются в кэше.
+Undoing an edit costs nothing: earlier translations and audio stay in the cache.
 
-`chapters.json` задаёт начало главы страницей и номером строки в `01-pages/pNNNN.txt`; глава заканчивается там, где начинается следующая. Текст до первого заголовка становится главой 0.
+`chapters.json` gives the start of a chapter as a page and a line number in `01-pages/pNNNN.txt`; a chapter ends where the next one starts. Text before the first heading becomes chapter 0.
 
-Если фрагмент не удаётся перевести или озвучить, `status` показывает путь, куда можно положить результат вручную. При следующем запуске он будет принят как готовый.
+When a chunk cannot be translated or a segment cannot be synthesised, `status` shows the path where a result can be supplied by hand. The next run accepts it as done.
 
-Когда перевод фрагмента отвергнут проверкой (пустой или слишком короткий либо длинный ответ), сам ответ модели сохраняется рядом с кэшем в файле `<хэш>.rejected.txt`, путь к нему есть в журнале. Если ответ на деле годится, переименуйте файл в `<хэш>.ru.txt`.
+When a chunk translation is rejected by the check (empty, or much shorter or longer than the source), the model's answer is saved next to the cache as `<hash>.rejected.txt`; the log gives its path. If the answer is in fact good, rename the file to `<hash>.ru.txt`.
 
-## Движки озвучки
+## Speech engines
 
-| `tts.backend` | Как работает | Ударения |
+| `tts.backend` | How it works | Stress |
 |---|---|---|
-| `silero` | `scripts/silero_tts.py` загружает модель один раз на пачку сегментов; пачек столько, сколько `tts.workers` | расставляет сам, включая омографы |
-| `piper` | команда из `tts.command` запускается на каждый сегмент | без учёта контекста; нужна `tts.accent_command` |
+| `silero` | `scripts/silero_tts.py` loads the model once per batch of segments; there are as many batches as `tts.workers` | placed by the engine, homographs included |
+| `piper` | the command from `tts.command` runs for every segment | ignores context; needs `tts.accent_command` |
 
-Для Silero в конфиге книги:
+For Silero, in the book's config:
 
 ```yaml
 tts:
   backend: silero
-  command: /полный/путь/scripts/silero_tts.py
+  command: /full/path/to/scripts/silero_tts.py
   args: ["--speaker", "xenia"]
   segment_chars: 800
 ```
 
-Скрипт принимает `--speaker`, `--model`, `--sample-rate` и `--device` (`cpu` или `cuda`). Первой строкой скрипта должен быть интерпретатор того окружения, где установлен `silero`, либо укажите интерпретатор в `tts.command`, а путь к скрипту — первым элементом `tts.args`.
+The script accepts `--speaker`, `--model`, `--sample-rate` and `--device` (`cpu` or `cuda`). Its first line must name the interpreter of the environment where `silero` is installed; alternatively put the interpreter in `tts.command` and the script path first in `tts.args`.
 
-## Ударения
+## Stress marks
 
-Piper выбирает ударение без учёта контекста и ошибается на омографах. Если задать `tts.accent_command`, текст перед озвучкой проходит через эту команду:
+Piper chooses the stress without looking at the context and gets homographs wrong. When `tts.accent_command` is set, the text passes through that command before speech:
 
-- на стандартный ввод она получает по одному сегменту в строке;
-- вывести должна столько же строк, в том же порядке, с расставленными ударениями;
-- запускается один раз на все сегменты запуска, поэтому модель загружается однажды.
+- it receives one segment per line on standard input;
+- it must print the same number of lines, in the same order, with stress marks added;
+- it runs once for all segments of a run, so its model is loaded once.
 
-Piper читает знак ударения U+0301 после ударной гласной: `го́лоса`. Включение, выключение и смена команды переозвучивают книгу; аудио, сделанное с прежней настройкой, остаётся в кэше.
+Piper reads the stress mark U+0301 after the stressed vowel: `го́лоса`. Turning the command on or off, or changing it, re-synthesises the book; audio made with the earlier setting stays in the cache.
 
-## Ограничения
+## Language of the output
 
-- Абзацы восстанавливаются по форме строк: абзац заканчивается на короткой строке с концом предложения. Если последняя строка абзаца полной ширины, он склеится со следующим.
-- Страницы оглавления в текст и в озвучку не попадают.
-- Главы ищутся по шаблону `chapters.heading_regex` (по умолчанию `Chapter N`, `Глава N`). Если в книге заголовки оформлены иначе, например одними прописными буквами, задайте свой шаблон: иначе текст делится на разделы по `fallback_pages` страниц.
-- Ударения расставляет сам движок озвучки; омографы («го́лоса» и «голоса́») он может прочитать неверно. Это исправляет внешняя команда расстановки ударений, см. ниже.
-- Piper запускается отдельным процессом на каждый сегмент; Silero — один раз на пачку.
-- Блокировка рабочей папки работает на Linux и macOS.
+The tool's messages, log and errors are in English. Text that ends up in the audiobook is in Russian: the title of chapter 0 ("Вступление"), the titles of fallback sections ("Часть N") and the word read in place of a URL ("ссылка").
+
+## Limitations
+
+- Paragraphs are restored from the shape of the lines: a paragraph ends on a short line that ends a sentence. If the last line of a paragraph is full width, it is joined to the next paragraph.
+- Table of contents pages are left out of the text and the audio.
+- Chapters are found with `chapters.heading_regex` (by default `Chapter N`, `Глава N`). If the book's headings look different, for example all capitals, set your own pattern: otherwise the text is split into sections of `fallback_pages` pages.
+- Stress is placed by the speech engine; Piper may misread homographs ("го́лоса" and "голоса́"). An external stress command fixes that, see above.
+- Piper starts a separate process for every segment; Silero starts once per batch.
+- The working folder lock works on Linux and macOS.

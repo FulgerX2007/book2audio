@@ -275,7 +275,7 @@ func TestOpen(t *testing.T) {
 		}
 		changed := writePDF(t, changedDir, "book.pdf", "a different file with the same name")
 		_, err := Open(changed, OpenOptions{Workdir: workdir})
-		if err == nil || !strings.Contains(err.Error(), "не совпадает") {
+		if err == nil || !strings.Contains(err.Error(), "differs from") {
 			t.Errorf("error = %v, want a sha256 mismatch error", err)
 		}
 	})
@@ -349,8 +349,8 @@ func TestOpenRejectsBadManifest(t *testing.T) {
 		manifest string
 		want     string
 	}{
-		{"corrupted", "{not json", "повреждён"},
-		{"unknown version", `{"version": 99, "source": {"sha256": "x"}}`, "версия манифеста 99"},
+		{"corrupted", "{not json", "is damaged"},
+		{"unknown version", `{"version": 99, "source": {"sha256": "x"}}`, "manifest version 99"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

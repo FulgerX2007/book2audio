@@ -174,7 +174,7 @@ func TestMarkFailedAndManualResult(t *testing.T) {
 	if err := m.MarkFailed("translate", "hash-2", Unit{In: "hash-2"}, ws.ChunkPath("hash-2"), errors.New("x")); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, ws.ChunkPath("hash-2"), "перевод")
+	writeFile(t, ws.ChunkPath("hash-2"), "translation")
 	if err := m.MarkDone("translate", "hash-2", Unit{In: "hash-2"}, ws.ChunkPath("hash-2")); err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestMarkErrors(t *testing.T) {
 	t.Run("result outside the working folder", func(t *testing.T) {
 		outside := filepath.Join(t.TempDir(), "x.txt")
 		writeFile(t, outside, "x")
-		if err := m.MarkDone("extract", "p0001", Unit{In: "in"}, outside); err == nil || !strings.Contains(err.Error(), "вне рабочей папки") {
+		if err := m.MarkDone("extract", "p0001", Unit{In: "in"}, outside); err == nil || !strings.Contains(err.Error(), "outside the working folder") {
 			t.Errorf("MarkDone error = %v", err)
 		}
 		if err := m.MarkFailed("extract", "p0001", Unit{In: "in"}, outside, errors.New("x")); err == nil {
@@ -282,7 +282,7 @@ func TestMarkErrors(t *testing.T) {
 	})
 	t.Run("manifest cannot be written", func(t *testing.T) {
 		broken := &Manifest{Version: ManifestVersion, dir: filepath.Join(t.TempDir(), "absent")}
-		if err := broken.SetSource(Source{}); err == nil || !strings.Contains(err.Error(), "запись манифеста") {
+		if err := broken.SetSource(Source{}); err == nil || !strings.Contains(err.Error(), "writing the manifest") {
 			t.Errorf("error = %v, want a manifest write error", err)
 		}
 	})
@@ -294,8 +294,8 @@ func TestLoadManifestErrors(t *testing.T) {
 		content string
 		want    string
 	}{
-		{"corrupted", "{not json", "повреждён"},
-		{"unknown version", `{"version": 99}`, "версия манифеста 99"},
+		{"corrupted", "{not json", "is damaged"},
+		{"unknown version", `{"version": 99}`, "manifest version 99"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 
 // ErrNotPCM is wrapped by the error returned for a WAV file that does not
 // hold plain integer PCM.
-var ErrNotPCM = errors.New("файл не содержит PCM-аудио")
+var ErrNotPCM = errors.New("the file does not hold PCM audio")
 
 // WAV format tags.
 const (
@@ -34,7 +34,7 @@ type Format struct {
 func (f Format) FrameSize() int { return f.Channels * f.BitsPerSample / 8 }
 
 func (f Format) String() string {
-	return fmt.Sprintf("%d Гц, каналов: %d, %d бит", f.SampleRate, f.Channels, f.BitsPerSample)
+	return fmt.Sprintf("%d Hz, %d channel(s), %d bit", f.SampleRate, f.Channels, f.BitsPerSample)
 }
 
 func (f Format) valid() bool {
@@ -90,7 +90,7 @@ func ReadWAV(path string) (Clip, error) {
 // "fmt " and a "data" chunk; other chunks are skipped.
 func ParseWAV(data []byte) (Clip, error) {
 	if len(data) < 12 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
-		return Clip{}, errors.New("это не WAV-файл")
+		return Clip{}, errors.New("not a WAV file")
 	}
 	var clip Clip
 	haveFormat := false
@@ -108,14 +108,14 @@ func ParseWAV(data []byte) (Clip, error) {
 		switch id {
 		case "fmt ":
 			if len(body) < 16 {
-				return Clip{}, errors.New("повреждён блок fmt")
+				return Clip{}, errors.New("the fmt chunk is damaged")
 			}
 			tag := binary.LittleEndian.Uint16(body[0:2])
 			if tag == formatExtensible && len(body) >= 26 {
 				tag = binary.LittleEndian.Uint16(body[24:26]) // the first field of the sub-format GUID
 			}
 			if tag != formatPCM {
-				return Clip{}, fmt.Errorf("%w (код формата %d)", ErrNotPCM, tag)
+				return Clip{}, fmt.Errorf("%w (format code %d)", ErrNotPCM, tag)
 			}
 			clip.Format = Format{
 				Channels:      int(binary.LittleEndian.Uint16(body[2:4])),
@@ -123,12 +123,12 @@ func ParseWAV(data []byte) (Clip, error) {
 				BitsPerSample: int(binary.LittleEndian.Uint16(body[14:16])),
 			}
 			if !clip.valid() {
-				return Clip{}, fmt.Errorf("недопустимый формат: %s", clip.Format)
+				return Clip{}, fmt.Errorf("invalid format: %s", clip.Format)
 			}
 			haveFormat = true
 		case "data":
 			if !haveFormat {
-				return Clip{}, errors.New("блок data стоит раньше блока fmt")
+				return Clip{}, errors.New("the data chunk comes before the fmt chunk")
 			}
 			// Drop an incomplete trailing frame.
 			clip.Data = body[:len(body)-len(body)%clip.FrameSize()]
@@ -137,18 +137,18 @@ func ParseWAV(data []byte) (Clip, error) {
 		pos += 8 + size + size%2 // chunks are word-aligned
 	}
 	if !haveFormat {
-		return Clip{}, errors.New("в WAV-файле нет блока fmt")
+		return Clip{}, errors.New("the WAV file has no fmt chunk")
 	}
-	return Clip{}, errors.New("в WAV-файле нет блока data")
+	return Clip{}, errors.New("the WAV file has no data chunk")
 }
 
 // EncodeWAV renders the clip as a canonical 44-byte-header WAV file.
 func EncodeWAV(clip Clip) ([]byte, error) {
 	if !clip.valid() {
-		return nil, fmt.Errorf("недопустимый формат: %s", clip.Format)
+		return nil, fmt.Errorf("invalid format: %s", clip.Format)
 	}
 	if len(clip.Data) > 0xFFFFFFFF-36 {
-		return nil, errors.New("аудио слишком велико для WAV-файла")
+		return nil, errors.New("the audio is too large for a WAV file")
 	}
 	var b bytes.Buffer
 	le := binary.LittleEndian

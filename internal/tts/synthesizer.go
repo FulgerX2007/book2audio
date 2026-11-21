@@ -47,6 +47,6 @@ func New(cfg config.TTS, runner execx.Runner) (Synthesizer, error) {
 	case config.BackendSilero:
 		return NewSilero(cfg, runner)
 	default:
-		return nil, fmt.Errorf("tts.backend: неизвестный бэкенд %q", cfg.Backend)
+		return nil, fmt.Errorf("tts.backend: unknown backend %q", cfg.Backend)
 	}
 }

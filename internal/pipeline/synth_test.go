@@ -235,7 +235,7 @@ func TestSynthSingleChapter(t *testing.T) {
 		t.Errorf("Counts = %+v, want all 12 units kept", c)
 	}
 
-	if _, err := Synth(context.Background(), ws, syn, quiet, SynthOptions{Chapter: 9}); err == nil || !strings.Contains(err.Error(), "главы 9 нет") {
+	if _, err := Synth(context.Background(), ws, syn, quiet, SynthOptions{Chapter: 9}); err == nil || !strings.Contains(err.Error(), "chapter 9 is not") {
 		t.Errorf("unknown chapter: error = %v", err)
 	}
 }
@@ -440,7 +440,7 @@ func TestSynthAccentErrors(t *testing.T) {
 				fake.Stub("accent", []byte("одна строка\n"), nil)
 				return fake
 			},
-			want: "вернула строк: 1, а сегментов 12",
+			want: "returned 1 lines for 12 segments",
 		},
 		{
 			name: "an empty line for a segment",
@@ -453,12 +453,12 @@ func TestSynthAccentErrors(t *testing.T) {
 				})
 				return fake
 			},
-			want: "пустую строку для сегмента 4",
+			want: "an empty line for segment 4",
 		},
 		{
 			name:   "no runner",
 			runner: func() execx.Runner { return nil },
-			want:   "не настроен",
+			want:   "no command runner is configured",
 		},
 	}
 	for _, tt := range tests {

@@ -74,14 +74,14 @@ func Build(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, lo
 			res.Joined++
 		}
 		if len(built) > 0 && ch.format != built[0].format {
-			return res, fmt.Errorf("глава %d озвучена в другом формате (%s), чем глава %d (%s): переозвучьте книгу одним голосом",
+			return res, fmt.Errorf("chapter %d is synthesised in a different format (%s) than chapter %d (%s): synthesise the book with one voice",
 				ch.n, ch.format, built[0].n, built[0].format)
 		}
 		built = append(built, ch)
 		keep = append(keep, chapters.UnitID(s.N))
 	}
 	if len(built) == 0 {
-		return res, errors.New("в книге нет глав")
+		return res, errors.New("the book has no chapters")
 	}
 
 	tags := bookTags(ws)
@@ -112,7 +112,7 @@ func Build(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, lo
 			}
 		}
 	default:
-		return res, fmt.Errorf("audio.format: неизвестный формат %q", ws.Config.Audio.Format)
+		return res, fmt.Errorf("audio.format: unknown format %q", ws.Config.Audio.Format)
 	}
 
 	return res, ws.Manifest.Prune(StageBuild, keep)
@@ -126,7 +126,7 @@ func joinChapter(ws *workspace.Workspace, s chapters.Start) (ch builtChapter, jo
 		return ch, false, err
 	}
 	if len(refs) == 0 {
-		return ch, false, fmt.Errorf("в главе %d нет текста для озвучки", s.N)
+		return ch, false, fmt.Errorf("chapter %d has no text to synthesise", s.N)
 	}
 	pause := time.Duration(ws.Config.Audio.ParagraphPauseMS) * time.Millisecond
 
@@ -155,16 +155,16 @@ func joinChapter(ws *workspace.Workspace, s chapters.Start) (ch builtChapter, jo
 	for i, ref := range refs {
 		clip, err := audio.ReadWAV(ws.SegmentPath(ref.Hash))
 		if errors.Is(err, fs.ErrNotExist) {
-			return ch, false, fmt.Errorf("глава %d: сегмент %d не озвучен: сначала выполните synth", s.N, i+1)
+			return ch, false, fmt.Errorf("chapter %d: segment %d is not synthesised: run synth first", s.N, i+1)
 		}
 		if err != nil {
-			return ch, false, fmt.Errorf("глава %d: %w", s.N, err)
+			return ch, false, fmt.Errorf("chapter %d: %w", s.N, err)
 		}
 		clips[i], pauses[i] = clip, ref.EndsParagraph
 	}
 	clip, err := audio.Join(clips, pauses, pause)
 	if err != nil {
-		return ch, false, fmt.Errorf("глава %d: %w", s.N, err)
+		return ch, false, fmt.Errorf("chapter %d: %w", s.N, err)
 	}
 	if err := audio.WriteWAV(ch.wav, clip); err != nil {
 		return ch, false, err
@@ -227,7 +227,7 @@ func encodeBook(ctx context.Context, ws *workspace.Workspace, runner execx.Runne
 		return out, false, err
 	}
 
-	log.Info("кодирование аудиокниги", "file", out, "chapters", len(built))
+	log.Info("encoding the audiobook", "file", out, "chapters", len(built))
 	// The chapters are streamed one by one, so only one of them is in
 	// memory at a time.
 	pr, pw := io.Pipe()
@@ -284,7 +284,7 @@ func encodeChapterMP3(ctx context.Context, ws *workspace.Workspace, runner execx
 	if err != nil {
 		return out, false, err
 	}
-	log.Info("кодирование главы", "file", out)
+	log.Info("encoding the chapter", "file", out)
 	err = audio.EncodeMP3(ctx, runner, bytes.NewReader(clip.Data), clip.Format, out, ws.Config.Audio.Bitrate,
 		audio.MP3Tags{Title: ch.title, Album: tags.Title, Artist: tags.Author, Track: track})
 	if err != nil {

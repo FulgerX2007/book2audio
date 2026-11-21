@@ -137,17 +137,17 @@ func TestPiperErrors(t *testing.T) {
 				fake.Stub("piper", nil, nil)
 				return fake
 			},
-			text: "Текст.", want: "не создал выходной файл",
+			text: "Текст.", want: "wrote no output file",
 		},
 		{
 			name:   "engine writes an empty file",
 			runner: func(t *testing.T) *execx.FakeRunner { return fakePiper(t, nil) },
-			text:   "Текст.", want: "не WAV",
+			text:   "Текст.", want: "not a WAV",
 		},
 		{
 			name:   "engine writes garbage",
 			runner: func(t *testing.T) *execx.FakeRunner { return fakePiper(t, []byte("Traceback (most recent call last)")) },
-			text:   "Текст.", want: "не WAV",
+			text:   "Текст.", want: "not a WAV",
 		},
 		{
 			name: "engine writes a WAV without samples",
@@ -155,12 +155,12 @@ func TestPiperErrors(t *testing.T) {
 				data, _ := audio.EncodeWAV(audio.Clip{Format: FakeFormat})
 				return fakePiper(t, data)
 			},
-			text: "Текст.", want: "пустой аудиофайл",
+			text: "Текст.", want: "empty audio file",
 		},
 		{
 			name:   "empty text",
 			runner: func(t *testing.T) *execx.FakeRunner { return fakePiper(t, goodWAV(t)) },
-			text:   " \n ", want: "пустой текст",
+			text:   " \n ", want: "empty text",
 		},
 	}
 	for _, tt := range tests {

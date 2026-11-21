@@ -36,17 +36,17 @@ type Runner interface {
 
 // ErrToolNotFound is wrapped by the error returned when an external tool is
 // not installed.
-var ErrToolNotFound = errors.New("утилита не найдена")
+var ErrToolNotFound = errors.New("tool not found")
 
 // installHints tells which package provides a tool.
 var installHints = map[string]string{
-	"pdfinfo":   "пакет poppler-utils",
-	"pdftotext": "пакет poppler-utils",
-	"pdftoppm":  "пакет poppler-utils",
-	"tesseract": "пакет tesseract-ocr и языковые данные",
-	"ffmpeg":    "пакет ffmpeg",
-	"ffprobe":   "пакет ffmpeg",
-	"piper":     "Piper и модель голоса",
+	"pdfinfo":   "the poppler-utils package",
+	"pdftotext": "the poppler-utils package",
+	"pdftoppm":  "the poppler-utils package",
+	"tesseract": "the tesseract-ocr package and language data",
+	"ffmpeg":    "the ffmpeg package",
+	"ffprobe":   "the ffmpeg package",
+	"piper":     "Piper and a voice model",
 }
 
 // Check reports whether the tool can be found in PATH. The error wraps
@@ -54,9 +54,9 @@ var installHints = map[string]string{
 func Check(name string) error {
 	if _, err := exec.LookPath(name); err != nil {
 		if hint, ok := installHints[name]; ok {
-			return fmt.Errorf("%w: %s, установите %s", ErrToolNotFound, name, hint)
+			return fmt.Errorf("%w: %s, install %s", ErrToolNotFound, name, hint)
 		}
-		return fmt.Errorf("%w: %s, установите её или укажите полный путь", ErrToolNotFound, name)
+		return fmt.Errorf("%w: %s, install it or give its full path", ErrToolNotFound, name)
 	}
 	return nil
 }

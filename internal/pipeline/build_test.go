@@ -284,7 +284,7 @@ func TestBuildErrors(t *testing.T) {
 		os.Remove(ws.SegmentPath(refs[2].Hash))
 		enc := newEncoder()
 		_, err := Build(context.Background(), ws, enc, quiet)
-		if err == nil || !strings.Contains(err.Error(), "сегмент 3 не озвучен") {
+		if err == nil || !strings.Contains(err.Error(), "segment 3 is not synthesised") {
 			t.Errorf("error = %v", err)
 		}
 		if len(enc.Calls()) != 0 {
@@ -302,7 +302,7 @@ func TestBuildErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := Build(context.Background(), ws, newEncoder(), quiet)
-		if err == nil || !strings.Contains(err.Error(), "другом формате") {
+		if err == nil || !strings.Contains(err.Error(), "a different format") {
 			t.Errorf("error = %v", err)
 		}
 	})

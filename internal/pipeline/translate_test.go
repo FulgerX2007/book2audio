@@ -390,7 +390,7 @@ func TestTranslateValidatesResults(t *testing.T) {
 				t.Errorf("the translator was called %d times, want exactly one repeat", tr.Calls())
 			}
 			id := ws.Manifest.UnitIDs(StageTranslate)[0]
-			if u, _ := ws.Manifest.Unit(StageTranslate, id); !strings.Contains(u.Error, "перевод") {
+			if u, _ := ws.Manifest.Unit(StageTranslate, id); !strings.Contains(u.Error, "translation") {
 				t.Errorf("recorded error = %q", u.Error)
 			}
 			// The rejected answer is kept for inspection, beside the cache
@@ -472,7 +472,7 @@ func TestTranslateSingleChapter(t *testing.T) {
 		t.Errorf("Counts = %+v, new calls = %d; want all 5 units kept and no work", c, tr.Calls()-before)
 	}
 
-	if _, err := Translate(context.Background(), ws, tr, quiet, TranslateOptions{Chapter: 9}); err == nil || !strings.Contains(err.Error(), "главы 9 нет") {
+	if _, err := Translate(context.Background(), ws, tr, quiet, TranslateOptions{Chapter: 9}); err == nil || !strings.Contains(err.Error(), "chapter 9 is not") {
 		t.Errorf("unknown chapter: error = %v", err)
 	}
 }
@@ -535,7 +535,7 @@ func TestTranslatePreconditions(t *testing.T) {
 		ws := newBook(t, twoChapters()...)
 		writeFile(t, ws.GlossaryPath(), "terms: [")
 		_, err := Translate(context.Background(), ws, &translate.FakeTranslator{}, quiet, TranslateOptions{Chapter: AllChapters})
-		if err == nil || !strings.Contains(err.Error(), "глоссарий") {
+		if err == nil || !strings.Contains(err.Error(), "glossary") {
 			t.Errorf("error = %v", err)
 		}
 	})

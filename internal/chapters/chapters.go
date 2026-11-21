@@ -95,7 +95,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, log *slog.Logger) (Result
 		if protected, err := ws.Manifest.Protected(Stage, id); err != nil {
 			return res, err
 		} else if protected {
-			log.Warn("глава изменена вручную и не перезаписана; --force пересоздаст её", "file", out)
+			log.Warn("the chapter was edited by hand and is kept; --force rebuilds it", "file", out)
 			res.Kept++
 			continue
 		}
@@ -115,17 +115,17 @@ func Run(ctx context.Context, ws *workspace.Workspace, log *slog.Logger) (Result
 func readPages(ws *workspace.Workspace) (pages []string, hash string, err error) {
 	n := ws.Manifest.GetSource().Pages
 	if n == 0 {
-		return nil, "", fmt.Errorf("текст ещё не извлечён: сначала выполните extract")
+		return nil, "", fmt.Errorf("the text is not extracted yet: run extract first")
 	}
 	parts := make([]string, 0, n)
 	for p := 1; p <= n; p++ {
 		u, ok := ws.Manifest.Unit(extract.Stage, extract.UnitID(p))
 		if !ok || u.Status != workspace.StatusDone {
-			return nil, "", fmt.Errorf("страница %d не извлечена: сначала выполните extract", p)
+			return nil, "", fmt.Errorf("page %d is not extracted: run extract first", p)
 		}
 		data, err := os.ReadFile(ws.PagePath(p))
 		if err != nil {
-			return nil, "", fmt.Errorf("страница %d: %w", p, err)
+			return nil, "", fmt.Errorf("page %d: %w", p, err)
 		}
 		pages = append(pages, string(data))
 		parts = append(parts, string(data))
@@ -159,13 +159,13 @@ func resolveStarts(ws *workspace.Workspace, detected []Start, in string, pages i
 			if err := Validate(starts, pages); err != nil {
 				return nil, false, fmt.Errorf("%s: %w", path, err)
 			}
-			log.Info("границы глав взяты из chapters.json, изменённого вручную", "chapters", len(starts))
+			log.Info("the chapter starts were taken from the hand-edited chapters.json", "chapters", len(starts))
 			return starts, true, nil
 		}
 	}
 
 	if len(detected) == 0 {
-		return nil, false, fmt.Errorf("в книге не найдено текста: главы не из чего собрать")
+		return nil, false, fmt.Errorf("no text was found in the book: there is nothing to make chapters from")
 	}
 	need, err := ws.Manifest.NeedsWork(Stage, indexUnit, in)
 	if err != nil {
@@ -192,7 +192,7 @@ func Load(ws *workspace.Workspace) ([]Start, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("главы ещё не выделены: сначала выполните chapters")
+			return nil, fmt.Errorf("the chapters are not made yet: run chapters first")
 		}
 		return nil, err
 	}

@@ -13,7 +13,7 @@ import (
 
 // ErrUnitsFailed is wrapped by the error a stage returns when some of its
 // units failed; the failures are recorded in the manifest.
-var ErrUnitsFailed = errors.New("этап завершён с ошибками")
+var ErrUnitsFailed = errors.New("the stage finished with failures")
 
 // Status is the state of one unit of work.
 type Status string
@@ -73,10 +73,10 @@ func LoadManifest(dir string) (*Manifest, error) {
 	}
 	m := &Manifest{dir: dir}
 	if err := json.Unmarshal(data, m); err != nil {
-		return nil, fmt.Errorf("%s повреждён: %w", path, err)
+		return nil, fmt.Errorf("%s is damaged: %w", path, err)
 	}
 	if m.Version != ManifestVersion {
-		return nil, fmt.Errorf("%s: версия манифеста %d не поддерживается (нужна %d)", path, m.Version, ManifestVersion)
+		return nil, fmt.Errorf("%s: manifest version %d is not supported (need %d)", path, m.Version, ManifestVersion)
 	}
 	return m, nil
 }
@@ -137,7 +137,7 @@ func (m *Manifest) MarkDone(stage, unit string, u Unit, outPath string) error {
 	}
 	sum, err := HashFile(m.abs(rel))
 	if err != nil {
-		return fmt.Errorf("результат единицы %s/%s: %w", stage, unit, err)
+		return fmt.Errorf("result of unit %s/%s: %w", stage, unit, err)
 	}
 	u.Out, u.OutSHA256, u.Status, u.Error = rel, sum, StatusDone, ""
 
@@ -295,7 +295,7 @@ func (m *Manifest) save() error {
 		return err
 	}
 	if err := WriteFileAtomic(filepath.Join(m.dir, manifestName), append(data, '\n'), 0o644); err != nil {
-		return fmt.Errorf("запись манифеста: %w", err)
+		return fmt.Errorf("writing the manifest: %w", err)
 	}
 	return nil
 }
@@ -312,7 +312,7 @@ func (m *Manifest) rel(path string) (string, error) {
 	}
 	rel, err := filepath.Rel(m.dir, path)
 	if err != nil || !filepath.IsLocal(rel) {
-		return "", fmt.Errorf("файл %s находится вне рабочей папки %s", path, m.dir)
+		return "", fmt.Errorf("file %s is outside the working folder %s", path, m.dir)
 	}
 	return filepath.ToSlash(rel), nil
 }

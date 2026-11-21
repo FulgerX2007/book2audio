@@ -25,14 +25,14 @@ type Piper struct {
 // NewPiper returns a Piper synthesizer configured by cfg.
 func NewPiper(cfg config.TTS, runner execx.Runner) (*Piper, error) {
 	if strings.TrimSpace(cfg.Command) == "" {
-		return nil, errors.New("tts.command: не задано")
+		return nil, errors.New("tts.command: is not set")
 	}
 	hasOut := false
 	for _, arg := range cfg.Args {
 		hasOut = hasOut || strings.Contains(arg, config.OutPlaceholder)
 	}
 	if !hasOut {
-		return nil, fmt.Errorf("tts.args: нет подстановки %s для пути выходного файла", config.OutPlaceholder)
+		return nil, fmt.Errorf("tts.args: has no %s placeholder for the output file path", config.OutPlaceholder)
 	}
 	return &Piper{command: cfg.Command, args: cfg.Args, runner: runner}, nil
 }
@@ -44,7 +44,7 @@ func (p *Piper) Synthesize(ctx context.Context, text, outPath string) error {
 	// Piper reads one utterance per line: the text must be a single line.
 	text = strings.Join(strings.Fields(text), " ")
 	if text == "" {
-		return errors.New("пустой текст для озвучки")
+		return errors.New("empty text to synthesise")
 	}
 
 	tmp := outPath + ".part"
@@ -60,20 +60,20 @@ func (p *Piper) Synthesize(ctx context.Context, text, outPath string) error {
 		Stdin: strings.NewReader(text + "\n"),
 	}); err != nil {
 		if errors.Is(err, execx.ErrToolNotFound) {
-			return fmt.Errorf("%w (команда из tts.command)", err)
+			return fmt.Errorf("%w (the command from tts.command)", err)
 		}
-		return fmt.Errorf("%w (проверьте путь к модели голоса в tts.args)", err)
+		return fmt.Errorf("%w (check the voice model path in tts.args)", err)
 	}
 
 	clip, err := audio.ReadWAV(tmp)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("%s не создал выходной файл: проверьте tts.args", p.command)
+			return fmt.Errorf("%s wrote no output file: check tts.args", p.command)
 		}
-		return fmt.Errorf("результат %s: %w", p.command, err)
+		return fmt.Errorf("output of %s: %w", p.command, err)
 	}
 	if clip.Frames() == 0 {
-		return fmt.Errorf("%s создал пустой аудиофайл", p.command)
+		return fmt.Errorf("%s wrote an empty audio file", p.command)
 	}
 	return os.Rename(tmp, outPath)
 }

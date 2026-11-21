@@ -107,7 +107,7 @@ func (a *App) Run(ctx context.Context, args []string) int {
 
 	cmd, ok := a.lookup(name)
 	if !ok {
-		fmt.Fprintf(a.Stderr, "%s: неизвестная подкоманда %q\n\n", prog, name)
+		fmt.Fprintf(a.Stderr, "%s: unknown subcommand %q\n\n", prog, name)
 		a.usage(a.Stderr)
 		return ExitUsage
 	}
@@ -130,10 +130,10 @@ func (a *App) runCommand(ctx context.Context, cmd Command, args []string) int {
 	fs.Usage = func() {}
 
 	var opts Options
-	fs.StringVar(&opts.ConfigPath, "config", "", "файл конфига на этот запуск (по умолчанию — config.yaml книги)")
-	fs.StringVar(&opts.Workdir, "workdir", "", "каталог с рабочими папками книг (по умолчанию — из конфига)")
-	fs.BoolVar(&opts.Force, "force", false, "перезаписывать файлы, изменённые вручную")
-	fs.BoolVar(&opts.Verbose, "v", false, "подробный журнал")
+	fs.StringVar(&opts.ConfigPath, "config", "", "config file for this run (default: the book's config.yaml)")
+	fs.StringVar(&opts.Workdir, "workdir", "", "directory of the book working folders (default: from the config)")
+	fs.BoolVar(&opts.Force, "force", false, "overwrite files that were edited by hand")
+	fs.BoolVar(&opts.Verbose, "v", false, "verbose log")
 	run := cmd.Setup(fs)
 
 	positional, err := parseInterspersed(fs, args)
@@ -203,19 +203,19 @@ func newLogger(w io.Writer, verbose bool) *slog.Logger {
 }
 
 func (a *App) usage(w io.Writer) {
-	fmt.Fprintf(w, "%s — PDF → русская аудиокнига по главам\n\n", prog)
-	fmt.Fprintf(w, "Использование:\n  %s <подкоманда> [флаги] <аргументы>\n\nПодкоманды:\n", prog)
+	fmt.Fprintf(w, "%s — PDF to a Russian audiobook split by chapters\n\n", prog)
+	fmt.Fprintf(w, "Usage:\n  %s <subcommand> [flags] <arguments>\n\nSubcommands:\n", prog)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, cmd := range a.Commands {
 		fmt.Fprintf(tw, "  %s\t%s\t%s\n", cmd.Name, cmd.Args, cmd.Summary)
 	}
 	tw.Flush()
-	fmt.Fprintf(w, "\nОбщие флаги: --config, --workdir, --force, -v\n")
-	fmt.Fprintf(w, "Справка по подкоманде: %s <подкоманда> --help\n", prog)
+	fmt.Fprintf(w, "\nCommon flags: --config, --workdir, --force, -v\n")
+	fmt.Fprintf(w, "Help for a subcommand: %s <subcommand> --help\n", prog)
 }
 
 func commandUsage(w io.Writer, cmd Command, fs *flag.FlagSet) {
-	fmt.Fprintf(w, "Использование: %s %s [флаги] %s\n\n%s\n\nФлаги:\n", prog, cmd.Name, cmd.Args, cmd.Summary)
+	fmt.Fprintf(w, "Usage: %s %s [flags] %s\n\n%s\n\nFlags:\n", prog, cmd.Name, cmd.Args, cmd.Summary)
 	fs.SetOutput(w)
 	fs.PrintDefaults()
 	fs.SetOutput(io.Discard)
@@ -233,23 +233,23 @@ func Builtin(deps Deps) []Command {
 	runner := deps.Runner
 	const book = "<book.pdf | work/<slug>>"
 	return []Command{
-		{Name: "init", Args: "<book.pdf>", Summary: "создать рабочую папку книги", Setup: setupInit},
-		{Name: "extract", Args: book, Summary: "извлечь текст по страницам (сканы — через OCR)", Setup: setupExtract(runner)},
-		{Name: "chapters", Args: book, Summary: "очистить текст и разбить его на главы", Setup: setupChapters},
-		{Name: "translate", Args: book, Summary: "перевести главы", Setup: setupTranslate(deps)},
-		{Name: "synth", Args: book, Summary: "озвучить переведённые главы", Setup: setupSynth(deps)},
-		{Name: "build", Args: book, Summary: "собрать аудиокнигу (M4B или MP3)", Setup: setupBuild(deps)},
-		{Name: "run", Args: book, Summary: "выполнить все этапы подряд", Setup: setupRun(deps)},
-		{Name: "status", Args: book, Summary: "показать состояние книги по этапам", Setup: setupStatus},
+		{Name: "init", Args: "<book.pdf>", Summary: "create the working folder of a book", Setup: setupInit},
+		{Name: "extract", Args: book, Summary: "extract the text page by page (scans go through OCR)", Setup: setupExtract(runner)},
+		{Name: "chapters", Args: book, Summary: "clean the text and split it into chapters", Setup: setupChapters},
+		{Name: "translate", Args: book, Summary: "translate the chapters", Setup: setupTranslate(deps)},
+		{Name: "synth", Args: book, Summary: "synthesise the translated chapters", Setup: setupSynth(deps)},
+		{Name: "build", Args: book, Summary: "build the audiobook (M4B or MP3)", Setup: setupBuild(deps)},
+		{Name: "run", Args: book, Summary: "run all stages in order", Setup: setupRun(deps)},
+		{Name: "status", Args: book, Summary: "show the state of the book by stage", Setup: setupStatus},
 	}
 }
 
 // setupInit is the Setup of "init".
 func setupInit(fs *flag.FlagSet) RunFunc {
-	slug := fs.String("slug", "", "имя рабочей папки (по умолчанию — из имени файла)")
+	slug := fs.String("slug", "", "working folder name (default: from the file name)")
 	return func(_ context.Context, inv *Invocation) error {
 		if len(inv.Args) != 1 {
-			return &UsageError{Msg: "нужен ровно один аргумент — путь к PDF"}
+			return &UsageError{Msg: "exactly one argument is required: the path of the PDF"}
 		}
 		ws, err := workspace.Init(inv.Args[0], workspace.InitOptions{
 			ConfigPath: inv.ConfigPath,
@@ -259,7 +259,7 @@ func setupInit(fs *flag.FlagSet) RunFunc {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(inv.Stdout, "Рабочая папка: %s\nКонфиг книги:  %s\n", ws.Dir, ws.ConfigPath())
+		fmt.Fprintf(inv.Stdout, "Working folder: %s\nBook config:    %s\n", ws.Dir, ws.ConfigPath())
 		return nil
 	}
 }
@@ -275,7 +275,7 @@ func setupExtract(runner execx.Runner) func(*flag.FlagSet) RunFunc {
 			defer ws.Close()
 
 			res, err := extract.Run(ctx, ws, runner, inv.Log)
-			fmt.Fprintf(inv.Stdout, "Страниц: %d, извлечено сейчас: %d (через OCR: %d), с ошибкой: %d\n",
+			fmt.Fprintf(inv.Stdout, "Pages: %d, extracted now: %d (by OCR: %d), failed: %d\n",
 				res.Pages, res.Extracted, res.OCR, res.Failed)
 			return err
 		}
@@ -295,10 +295,10 @@ func setupChapters(*flag.FlagSet) RunFunc {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(inv.Stdout, "Глав: %d, записано сейчас: %d, оставлено с ручными правками: %d, страниц оглавления пропущено: %d\n",
+		fmt.Fprintf(inv.Stdout, "Chapters: %d, written now: %d, kept with hand edits: %d, table of contents pages skipped: %d\n",
 			res.Chapters, res.Written, res.Kept, res.TOCPages)
 		if res.Manual {
-			fmt.Fprintln(inv.Stdout, "Границы глав взяты из chapters.json, изменённого вручную.")
+			fmt.Fprintln(inv.Stdout, "The chapter starts were taken from the hand-edited chapters.json.")
 		}
 		return nil
 	}
@@ -307,7 +307,7 @@ func setupChapters(*flag.FlagSet) RunFunc {
 // setupTranslate is the Setup of "translate".
 func setupTranslate(deps Deps) func(*flag.FlagSet) RunFunc {
 	return func(fs *flag.FlagSet) RunFunc {
-		chapter := fs.Int("chapter", pipeline.AllChapters, "перевести только главу с этим номером")
+		chapter := fs.Int("chapter", pipeline.AllChapters, "translate only the chapter with this number")
 		return func(ctx context.Context, inv *Invocation) error {
 			ws, err := openBook(inv)
 			if err != nil {
@@ -323,7 +323,7 @@ func setupTranslate(deps Deps) func(*flag.FlagSet) RunFunc {
 				return err
 			}
 			res, err := pipeline.Translate(ctx, ws, tr, inv.Log, pipeline.TranslateOptions{Chapter: *chapter})
-			fmt.Fprintf(inv.Stdout, "Глав: %d, фрагментов: %d, переведено сейчас: %d, с ошибкой: %d, собрано глав: %d, оставлено с ручными правками: %d\n",
+			fmt.Fprintf(inv.Stdout, "Chapters: %d, chunks: %d, translated now: %d, failed: %d, chapters assembled: %d, kept with hand edits: %d\n",
 				res.Chapters, res.Chunks, res.Translated, res.Failed, res.Assembled, res.Kept)
 			return err
 		}
@@ -333,7 +333,7 @@ func setupTranslate(deps Deps) func(*flag.FlagSet) RunFunc {
 // setupSynth is the Setup of "synth".
 func setupSynth(deps Deps) func(*flag.FlagSet) RunFunc {
 	return func(fs *flag.FlagSet) RunFunc {
-		chapter := fs.Int("chapter", pipeline.AllChapters, "озвучить только главу с этим номером")
+		chapter := fs.Int("chapter", pipeline.AllChapters, "synthesise only the chapter with this number")
 		return func(ctx context.Context, inv *Invocation) error {
 			ws, err := openBook(inv)
 			if err != nil {
@@ -349,7 +349,7 @@ func setupSynth(deps Deps) func(*flag.FlagSet) RunFunc {
 				return err
 			}
 			res, err := pipeline.Synth(ctx, ws, syn, inv.Log, pipeline.SynthOptions{Chapter: *chapter, Runner: deps.Runner})
-			fmt.Fprintf(inv.Stdout, "Глав: %d, сегментов: %d, озвучено сейчас: %d, с ошибкой: %d\n",
+			fmt.Fprintf(inv.Stdout, "Chapters: %d, segments: %d, synthesised now: %d, failed: %d\n",
 				res.Chapters, res.Segments, res.Synthesized, res.Failed)
 			return err
 		}
@@ -370,7 +370,7 @@ func setupBuild(deps Deps) func(*flag.FlagSet) RunFunc {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(inv.Stdout, "Глав: %d, склеено сейчас: %d, закодировано файлов сейчас: %d\n", res.Chapters, res.Joined, res.Encoded)
+			fmt.Fprintf(inv.Stdout, "Chapters: %d, joined now: %d, files encoded now: %d\n", res.Chapters, res.Joined, res.Encoded)
 			for _, out := range res.Outputs {
 				fmt.Fprintln(inv.Stdout, out)
 			}
@@ -383,8 +383,8 @@ func setupBuild(deps Deps) func(*flag.FlagSet) RunFunc {
 func setupRun(deps Deps) func(*flag.FlagSet) RunFunc {
 	return func(fs *flag.FlagSet) RunFunc {
 		stages := strings.Join(pipeline.Stages, ", ")
-		from := fs.String("from", "", "первый этап запуска ("+stages+")")
-		to := fs.String("to", "", "последний этап запуска")
+		from := fs.String("from", "", "first stage to run ("+stages+")")
+		to := fs.String("to", "", "last stage to run")
 		return func(ctx context.Context, inv *Invocation) error {
 			ws, err := openBook(inv)
 			if errors.Is(err, workspace.ErrNotInitialized) && len(inv.Args) == 1 {
@@ -408,7 +408,7 @@ func setupRun(deps Deps) func(*flag.FlagSet) RunFunc {
 func setupStatus(*flag.FlagSet) RunFunc {
 	return func(_ context.Context, inv *Invocation) error {
 		if len(inv.Args) != 1 {
-			return &UsageError{Msg: "нужен ровно один аргумент — путь к PDF или к рабочей папке книги"}
+			return &UsageError{Msg: "exactly one argument is required: the PDF or the working folder of the book"}
 		}
 		// status only reads, so it does not take the lock: it can be run
 		// while another process is working on the book.
@@ -430,7 +430,7 @@ func setupStatus(*flag.FlagSet) RunFunc {
 // positional argument of a stage subcommand. The caller must Close it.
 func openBook(inv *Invocation) (*workspace.Workspace, error) {
 	if len(inv.Args) != 1 {
-		return nil, &UsageError{Msg: "нужен ровно один аргумент — путь к PDF или к рабочей папке книги"}
+		return nil, &UsageError{Msg: "exactly one argument is required: the PDF or the working folder of the book"}
 	}
 	ws, err := workspace.Open(inv.Args[0], workspace.OpenOptions{
 		ConfigPath: inv.ConfigPath,

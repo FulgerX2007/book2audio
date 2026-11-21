@@ -18,7 +18,7 @@ var rawFormats = map[int]string{8: "u8", 16: "s16le", 24: "s24le", 32: "s32le"}
 func inputArgs(f Format) ([]string, error) {
 	raw, ok := rawFormats[f.BitsPerSample]
 	if !ok {
-		return nil, fmt.Errorf("неподдерживаемая разрядность звука: %d бит", f.BitsPerSample)
+		return nil, fmt.Errorf("unsupported sample size: %d bits", f.BitsPerSample)
 	}
 	return []string{
 		"-hide_banner", "-loglevel", "error", "-y",
@@ -83,7 +83,7 @@ func runEncoder(ctx context.Context, runner execx.Runner, args []string, pcm io.
 		return err
 	}
 	if info, err := os.Stat(tmp); err != nil || info.Size() == 0 {
-		return fmt.Errorf("ffmpeg не создал файл %s", outPath)
+		return fmt.Errorf("ffmpeg wrote no file %s", outPath)
 	}
 	return os.Rename(tmp, outPath)
 }

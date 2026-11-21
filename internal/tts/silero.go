@@ -30,7 +30,7 @@ type Silero struct {
 // the script (or the interpreter), tts.args its arguments.
 func NewSilero(cfg config.TTS, runner execx.Runner) (*Silero, error) {
 	if strings.TrimSpace(cfg.Command) == "" {
-		return nil, errors.New("tts.command: не задано")
+		return nil, errors.New("tts.command: is not set")
 	}
 	return &Silero{command: cfg.Command, args: cfg.Args, runner: runner}, nil
 }
@@ -62,13 +62,13 @@ func (s *Silero) SynthesizeBatch(ctx context.Context, items []Item) ([]error, er
 	out, err := s.runner.Run(ctx, execx.Cmd{Name: s.command, Args: s.args, Stdin: &input})
 	if err != nil {
 		if errors.Is(err, execx.ErrToolNotFound) {
-			return nil, fmt.Errorf("%w (команда из tts.command)", err)
+			return nil, fmt.Errorf("%w (the command from tts.command)", err)
 		}
-		return nil, fmt.Errorf("движок озвучки Silero: %w", err)
+		return nil, fmt.Errorf("Silero speech engine: %w", err)
 	}
 	lines := strings.Split(strings.TrimRight(strings.ReplaceAll(string(out), "\r\n", "\n"), "\n"), "\n")
 	if len(lines) != len(items) {
-		return nil, fmt.Errorf("движок озвучки Silero ответил строк: %d, а сегментов %d", len(lines), len(items))
+		return nil, fmt.Errorf("the Silero speech engine answered %d lines for %d segments", len(lines), len(items))
 	}
 
 	errs := make([]error, len(items))
@@ -80,7 +80,7 @@ func (s *Silero) SynthesizeBatch(ctx context.Context, items []Item) ([]error, er
 		case "err":
 			errs[i] = fmt.Errorf("Silero: %s", msg)
 		default:
-			errs[i] = fmt.Errorf("Silero: непонятный ответ %q", line)
+			errs[i] = fmt.Errorf("Silero: unexpected answer %q", line)
 		}
 	}
 	return errs, nil
@@ -91,12 +91,12 @@ func checkWAV(path string) error {
 	clip, err := audio.ReadWAV(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return errors.New("движок озвучки сообщил об успехе, но не создал файл")
+			return errors.New("the speech engine reported success but wrote no file")
 		}
-		return fmt.Errorf("результат движка озвучки: %w", err)
+		return fmt.Errorf("speech engine output: %w", err)
 	}
 	if clip.Frames() == 0 {
-		return errors.New("движок озвучки создал пустой аудиофайл")
+		return errors.New("the speech engine wrote an empty audio file")
 	}
 	return nil
 }

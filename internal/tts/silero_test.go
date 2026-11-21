@@ -135,7 +135,7 @@ func TestSileroErrors(t *testing.T) {
 		fake.Stub("silero_tts.py", []byte("ok\nok\n"), nil)
 		syn, _ := NewSilero(sileroConfig(), fake)
 		_, err := syn.SynthesizeBatch(context.Background(), item(t))
-		if err == nil || !strings.Contains(err.Error(), "строк: 2, а сегментов 1") {
+		if err == nil || !strings.Contains(err.Error(), "answered 2 lines for 1 segments") {
 			t.Errorf("error = %v", err)
 		}
 	})
@@ -144,9 +144,9 @@ func TestSileroErrors(t *testing.T) {
 		write []byte
 		want  string
 	}{
-		"ok without a file":     {"ok\n", nil, "не создал файл"},
-		"ok with garbage":       {"ok\r\n", []byte("not a wav"), "не WAV"},
-		"unknown answer":        {"maybe\n", nil, "непонятный ответ"},
+		"ok without a file":     {"ok\n", nil, "wrote no file"},
+		"ok with garbage":       {"ok\r\n", []byte("not a wav"), "not a WAV"},
+		"unknown answer":        {"maybe\n", nil, "unexpected answer"},
 		"error without message": {"err\n", nil, "Silero"},
 	} {
 		t.Run(name, func(t *testing.T) {

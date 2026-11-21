@@ -50,12 +50,12 @@ func TestParseGlossaryErrors(t *testing.T) {
 		doc  string
 		want string
 	}{
-		{"malformed YAML", "terms: [", "разбор YAML"},
-		{"unknown key", "term:\n  - source: a\n", "разбор YAML"},
-		{"unknown field of a term", "terms:\n  - source: a\n    target: b\n    note: c\n", "разбор YAML"},
-		{"missing target", "terms:\n  - source: a\n", "source, и target"},
-		{"missing source", "terms:\n  - target: b\n", "source, и target"},
-		{"duplicate", "terms:\n  - {source: Darcy, target: Дарси}\n  - {source: DARCY, target: Дарси}\n", "дважды"},
+		{"malformed YAML", "terms: [", "parsing YAML"},
+		{"unknown key", "term:\n  - source: a\n", "parsing YAML"},
+		{"unknown field of a term", "terms:\n  - source: a\n    target: b\n    note: c\n", "parsing YAML"},
+		{"missing target", "terms:\n  - source: a\n", "both source and target"},
+		{"missing source", "terms:\n  - target: b\n", "both source and target"},
+		{"duplicate", "terms:\n  - {source: Darcy, target: Дарси}\n  - {source: DARCY, target: Дарси}\n", "twice"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -58,12 +58,12 @@ type Status struct {
 
 // statusStages lists what status reports, in pipeline order.
 var statusStages = []struct{ name, what string }{
-	{extract.Stage, "страницы"},
-	{chapters.Stage, "chapters.json и главы"},
-	{StageTranslate, "фрагменты перевода"},
-	{StageTranslated, "переведённые главы"},
-	{StageSynth, "сегменты озвучки"},
-	{StageBuild, "аудио глав и книги"},
+	{extract.Stage, "pages"},
+	{chapters.Stage, "chapters.json and chapters"},
+	{StageTranslate, "translation chunks"},
+	{StageTranslated, "translated chapters"},
+	{StageSynth, "speech segments"},
+	{StageBuild, "chapter and book audio"},
 }
 
 // editableStages are the stages whose results may be edited by hand.
@@ -106,18 +106,18 @@ func ReadStatus(ws *workspace.Workspace) (Status, error) {
 // Write prints the status as a table followed by the failures and the
 // hand-edited files.
 func (st Status) Write(w io.Writer) {
-	fmt.Fprintf(w, "Книга: %s\n\n", st.Dir)
+	fmt.Fprintf(w, "Book: %s\n\n", st.Dir)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "Этап\tЧто\tВсего\tГотово\tОшибок")
+	fmt.Fprintln(tw, "Stage\tUnits\tTotal\tDone\tFailed")
 	for _, s := range st.Stages {
 		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\n", s.Name, s.What, s.Counts.Total, s.Counts.Done, s.Counts.Failed)
 	}
 	tw.Flush()
 
 	if len(st.Chapters) > 0 {
-		fmt.Fprintln(w, "\nГлавы:")
+		fmt.Fprintln(w, "\nChapters:")
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "  №\tЗаголовок\tПеревод\tОзвучка\tАудио главы")
+		fmt.Fprintln(tw, "  No\tTitle\tTranslation\tSpeech\tChapter audio")
 		for _, ch := range st.Chapters {
 			fmt.Fprintf(tw, "  %d\t%s\t%s\t%s\t%s\n", ch.N, shorten(ch.Title, 40),
 				progress(ch.ChunksDone, ch.Chunks, ch.ChunksFailed, ch.Translated),
@@ -128,17 +128,17 @@ func (st Status) Write(w io.Writer) {
 	}
 
 	if len(st.Failures) > 0 {
-		fmt.Fprintln(w, "\nОшибки:")
+		fmt.Fprintln(w, "\nFailures:")
 		for _, f := range st.Failures {
 			where := f.Stage
 			if f.Chapter != "" {
 				where += " " + f.Chapter
 			}
-			fmt.Fprintf(w, "  %s: %s\n    результат можно положить вручную: %s\n", where, f.Error, f.Out)
+			fmt.Fprintf(w, "  %s: %s\n    a result can be supplied by hand at: %s\n", where, f.Error, f.Out)
 		}
 	}
 	if len(st.Edited) > 0 {
-		fmt.Fprintln(w, "\nИзменены вручную (не перезаписываются без --force):")
+		fmt.Fprintln(w, "\nEdited by hand (not overwritten without --force):")
 		for _, path := range st.Edited {
 			fmt.Fprintf(w, "  %s\n", path)
 		}
@@ -240,7 +240,7 @@ func progress(done, total, failed int, complete bool) string {
 		s = fmt.Sprintf("%d/%d", done, total)
 	}
 	if failed > 0 {
-		s += fmt.Sprintf(", ошибок %d", failed)
+		s += fmt.Sprintf(", failed %d", failed)
 	}
 	if complete {
 		s += " ✓"

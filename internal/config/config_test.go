@@ -79,10 +79,10 @@ func TestParseErrors(t *testing.T) {
 		doc  string
 		want string // substring of the error
 	}{
-		{"malformed YAML", "translate: [unclosed", "разбор YAML"},
+		{"malformed YAML", "translate: [unclosed", "parsing YAML"},
 		{"unknown top-level key", "sourse_lang: en\n", "sourse_lang"},
 		{"unknown nested key", "audio:\n  bitrat: 64k\n", "bitrat"},
-		{"wrong type", "extract:\n  ocr_dpi: много\n", "разбор YAML"},
+		{"wrong type", "extract:\n  ocr_dpi: много\n", "parsing YAML"},
 		{"invalid value", "audio:\n  format: ogg\n", "audio.format"},
 	}
 	for _, tt := range tests {

@@ -23,13 +23,13 @@ func LoadGlossary(path string) (Glossary, error) {
 		return Glossary{}, nil
 	}
 	if err != nil {
-		return Glossary{}, fmt.Errorf("глоссарий: %w", err)
+		return Glossary{}, fmt.Errorf("glossary: %w", err)
 	}
 	defer f.Close()
 
 	g, err := ParseGlossary(f)
 	if err != nil {
-		return Glossary{}, fmt.Errorf("глоссарий %s: %w", path, err)
+		return Glossary{}, fmt.Errorf("glossary %s: %w", path, err)
 	}
 	return g, nil
 }
@@ -47,7 +47,7 @@ func ParseGlossary(r io.Reader) (Glossary, error) {
 	dec := yaml.NewDecoder(r)
 	dec.KnownFields(true)
 	if err := dec.Decode(&g); err != nil && !errors.Is(err, io.EOF) {
-		return Glossary{}, fmt.Errorf("разбор YAML: %w", err)
+		return Glossary{}, fmt.Errorf("parsing YAML: %w", err)
 	}
 
 	seen := make(map[string]bool)
@@ -55,11 +55,11 @@ func ParseGlossary(r io.Reader) (Glossary, error) {
 		t := &g.Terms[i]
 		t.Source, t.Target = strings.TrimSpace(t.Source), strings.TrimSpace(t.Target)
 		if t.Source == "" || t.Target == "" {
-			return Glossary{}, fmt.Errorf("термин %d: нужны и source, и target", i+1)
+			return Glossary{}, fmt.Errorf("term %d: both source and target are required", i+1)
 		}
 		key := strings.ToLower(t.Source)
 		if seen[key] {
-			return Glossary{}, fmt.Errorf("термин %q указан дважды", t.Source)
+			return Glossary{}, fmt.Errorf("term %q is listed twice", t.Source)
 		}
 		seen[key] = true
 	}

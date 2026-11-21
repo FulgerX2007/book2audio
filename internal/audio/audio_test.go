@@ -58,7 +58,7 @@ func TestJoinErrors(t *testing.T) {
 		t.Error("Join with a wrong number of pause flags succeeded")
 	}
 	_, err := Join([]Clip{a, other}, []bool{false, false}, 0)
-	if err == nil || !strings.Contains(err.Error(), "другой формат") || !strings.Contains(err.Error(), "16000") {
+	if err == nil || !strings.Contains(err.Error(), "a different format") || !strings.Contains(err.Error(), "16000") {
 		t.Errorf("mixed formats: error = %v", err)
 	}
 }
@@ -226,7 +226,7 @@ func TestEncodeErrors(t *testing.T) {
 		fake := execx.NewFakeRunner()
 		fake.Stub("ffmpeg", nil, nil)
 		err := EncodeMP3(context.Background(), fake, pcm(), mono16, out, "64k", MP3Tags{})
-		if err == nil || !strings.Contains(err.Error(), "не создал файл") {
+		if err == nil || !strings.Contains(err.Error(), "wrote no file") {
 			t.Errorf("error = %v", err)
 		}
 	})
@@ -239,7 +239,7 @@ func TestEncodeErrors(t *testing.T) {
 	t.Run("unsupported sample size", func(t *testing.T) {
 		odd := Format{SampleRate: 22050, Channels: 1, BitsPerSample: 12}
 		fake := fakeFFmpeg()
-		if err := EncodeM4B(context.Background(), fake, pcm(), odd, "meta", out, "64k"); err == nil || !strings.Contains(err.Error(), "12 бит") {
+		if err := EncodeM4B(context.Background(), fake, pcm(), odd, "meta", out, "64k"); err == nil || !strings.Contains(err.Error(), "12 bits") {
 			t.Errorf("error = %v", err)
 		}
 		if err := EncodeMP3(context.Background(), fake, pcm(), odd, out, "64k", MP3Tags{}); err == nil {

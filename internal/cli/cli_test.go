@@ -65,7 +65,7 @@ func TestRunTopLevel(t *testing.T) {
 			name:       "no arguments prints usage as an error",
 			args:       nil,
 			wantCode:   ExitUsage,
-			wantStderr: []string{"Использование:", "Подкоманды:"},
+			wantStderr: []string{"Usage:", "Subcommands:"},
 		},
 		{
 			name:       "--help lists every command",
@@ -77,25 +77,25 @@ func TestRunTopLevel(t *testing.T) {
 			name:       "-h",
 			args:       []string{"-h"},
 			wantCode:   ExitOK,
-			wantStdout: []string{"Подкоманды:"},
+			wantStdout: []string{"Subcommands:"},
 		},
 		{
 			name:       "help",
 			args:       []string{"help"},
 			wantCode:   ExitOK,
-			wantStdout: []string{"Подкоманды:"},
+			wantStdout: []string{"Subcommands:"},
 		},
 		{
 			name:       "unknown command",
 			args:       []string{"frobnicate"},
 			wantCode:   ExitUsage,
-			wantStderr: []string{`неизвестная подкоманда "frobnicate"`, "Подкоманды:"},
+			wantStderr: []string{`unknown subcommand "frobnicate"`, "Subcommands:"},
 		},
 		{
 			name:       "help for an unknown command",
 			args:       []string{"help", "frobnicate"},
 			wantCode:   ExitUsage,
-			wantStderr: []string{`неизвестная подкоманда "frobnicate"`},
+			wantStderr: []string{`unknown subcommand "frobnicate"`},
 		},
 	}
 	for _, tt := range tests {
@@ -260,7 +260,7 @@ func TestCommandHelp(t *testing.T) {
 				t.Error("the command was run although help was requested")
 			}
 			for _, want := range []string{
-				"Использование: book2audio demo [флаги] <book.pdf>",
+				"Usage: book2audio demo [flags] <book.pdf>",
 				"показательная подкоманда",
 				"-config", "-workdir", "-force", "-v", "-slug", "имя рабочей папки",
 			} {
@@ -297,7 +297,7 @@ func TestBadFlagIsUsageError(t *testing.T) {
 			if got != nil {
 				t.Error("the command was run despite the bad command line")
 			}
-			if !strings.Contains(stderr.String(), tt.want) || !strings.Contains(stderr.String(), "Использование: book2audio demo") {
+			if !strings.Contains(stderr.String(), tt.want) || !strings.Contains(stderr.String(), "Usage: book2audio demo") {
 				t.Errorf("stderr lacks the error or the usage:\n%s", stderr.String())
 			}
 			if stdout.Len() != 0 {
@@ -331,7 +331,7 @@ func TestCommandErrors(t *testing.T) {
 			if !strings.Contains(stderr.String(), "book2audio demo: "+tt.err.Error()) {
 				t.Errorf("stderr lacks the error message:\n%s", stderr.String())
 			}
-			if gotUsage := strings.Contains(stderr.String(), "Использование:"); gotUsage != tt.wantUsage {
+			if gotUsage := strings.Contains(stderr.String(), "Usage:"); gotUsage != tt.wantUsage {
 				t.Errorf("usage printed = %v, want %v", gotUsage, tt.wantUsage)
 			}
 		})
@@ -385,7 +385,7 @@ func TestInitCommand(t *testing.T) {
 	})
 	t.Run("without a PDF is a usage error", func(t *testing.T) {
 		code, _, stderr := runBuiltin("init")
-		if code != ExitUsage || !strings.Contains(stderr, "Использование: book2audio init") {
+		if code != ExitUsage || !strings.Contains(stderr, "Usage: book2audio init") {
 			t.Errorf("exit code = %d, stderr:\n%s", code, stderr)
 		}
 	})
@@ -410,7 +410,7 @@ func TestStageCommandsOpenTheBook(t *testing.T) {
 	t.Run("without an argument is a usage error", func(t *testing.T) {
 		for _, stage := range stages {
 			code, _, stderr := runBuiltin(stage)
-			if code != ExitUsage || !strings.Contains(stderr, "Использование: book2audio "+stage) {
+			if code != ExitUsage || !strings.Contains(stderr, "Usage: book2audio "+stage) {
 				t.Errorf("%s: exit code = %d, stderr:\n%s", stage, code, stderr)
 			}
 		}
@@ -433,7 +433,7 @@ func TestStageCommandsOpenTheBook(t *testing.T) {
 
 		// status only reads: it works while the book is locked.
 		code, stdout, stderr := runBuiltin("status", pdf, "--workdir", workdir)
-		if code != ExitOK || !strings.Contains(stdout, "Этап") {
+		if code != ExitOK || !strings.Contains(stdout, "Stage") {
 			t.Errorf("status of a locked book: exit code = %d, stderr:\n%s", code, stderr)
 		}
 	})
@@ -519,7 +519,7 @@ func TestExtractCommand(t *testing.T) {
 	if code := app.Run(context.Background(), []string{"extract", pdf, "--workdir", workdir}); code != ExitOK {
 		t.Fatalf("extract: exit code = %d; stderr:\n%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Страниц: 2, извлечено сейчас: 2") {
+	if !strings.Contains(stdout.String(), "Pages: 2, extracted now: 2") {
 		t.Errorf("stdout lacks the summary:\n%s", stdout.String())
 	}
 	got, err := os.ReadFile(filepath.Join(workdir, "my-book", "01-pages", "p0002.txt"))
@@ -532,7 +532,7 @@ func TestExtractCommand(t *testing.T) {
 	if code := app.Run(context.Background(), []string{"chapters", pdf, "--workdir", workdir}); code != ExitOK {
 		t.Fatalf("chapters: exit code = %d; stderr:\n%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Глав: 1, записано сейчас: 1") {
+	if !strings.Contains(stdout.String(), "Chapters: 1, written now: 1") {
 		t.Errorf("stdout lacks the chapters summary:\n%s", stdout.String())
 	}
 	if _, err := os.Stat(filepath.Join(workdir, "my-book", "02-chapters", "ch01.md")); err != nil {
@@ -552,7 +552,7 @@ func TestExtractCommand(t *testing.T) {
 	if code := app.Run(context.Background(), []string{"translate", pdf, "--workdir", workdir, "--chapter", "1"}); code != ExitOK {
 		t.Fatalf("translate: exit code = %d; stderr:\n%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "переведено сейчас: 1") || tr.Calls() != 1 {
+	if !strings.Contains(stdout.String(), "translated now: 1") || tr.Calls() != 1 {
 		t.Errorf("translator calls = %d; stdout:\n%s", tr.Calls(), stdout.String())
 	}
 	translated, err := os.ReadFile(filepath.Join(workdir, "my-book", "03-translated", "ch01.ru.md"))
@@ -576,7 +576,7 @@ func TestExtractCommand(t *testing.T) {
 		t.Fatalf("synth: exit code = %d; stderr:\n%s", code, stderr.String())
 	}
 	// The chapter is a title and one paragraph: two segments.
-	if !strings.Contains(stdout.String(), "сегментов: 2, озвучено сейчас: 2") || syn.Calls() != 2 {
+	if !strings.Contains(stdout.String(), "segments: 2, synthesised now: 2") || syn.Calls() != 2 {
 		t.Errorf("synthesizer calls = %d; stdout:\n%s", syn.Calls(), stdout.String())
 	}
 
@@ -598,7 +598,7 @@ func TestExtractCommand(t *testing.T) {
 	if code := app.Run(context.Background(), []string{"status", pdf, "--workdir", workdir}); code != ExitOK {
 		t.Fatalf("status: exit code = %d; stderr:\n%s", code, stderr.String())
 	}
-	for _, want := range []string{"Этап", "extract", "build", "Готово"} {
+	for _, want := range []string{"Stage", "extract", "build", "Done"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("status lacks %q:\n%s", want, stdout.String())
 		}
@@ -609,7 +609,7 @@ func TestExtractCommand(t *testing.T) {
 	if code := app.Run(context.Background(), []string{"run", pdf, "--workdir", workdir}); code != ExitOK {
 		t.Fatalf("run: exit code = %d; stderr:\n%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "переведено сейчас 0") || !strings.Contains(stdout.String(), book) {
+	if !strings.Contains(stdout.String(), "0 translated now") || !strings.Contains(stdout.String(), book) {
 		t.Errorf("run summary:\n%s", stdout.String())
 	}
 	if code := app.Run(context.Background(), []string{"run", pdf, "--workdir", workdir, "--from", "nowhere"}); code != ExitError {

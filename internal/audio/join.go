@@ -12,10 +12,10 @@ import (
 // the speech.
 func Join(clips []Clip, pauseAfter []bool, pause time.Duration) (Clip, error) {
 	if len(clips) == 0 {
-		return Clip{}, errors.New("нет аудио для склейки")
+		return Clip{}, errors.New("no audio to join")
 	}
 	if len(pauseAfter) != len(clips) {
-		return Clip{}, fmt.Errorf("пауз задано %d, а фрагментов %d", len(pauseAfter), len(clips))
+		return Clip{}, fmt.Errorf("%d pause flags for %d clips", len(pauseAfter), len(clips))
 	}
 	format := clips[0].Format
 	silence := Silence(format, pause)
@@ -23,7 +23,7 @@ func Join(clips []Clip, pauseAfter []bool, pause time.Duration) (Clip, error) {
 	size := 0
 	for i, c := range clips {
 		if c.Format != format {
-			return Clip{}, fmt.Errorf("фрагмент %d имеет другой формат (%s), чем первый (%s): все сегменты должны быть озвучены одним голосом",
+			return Clip{}, fmt.Errorf("clip %d has a different format (%s) than the first one (%s): all segments must be synthesised with the same voice",
 				i+1, c.Format, format)
 		}
 		size += len(c.Data) + len(silence)

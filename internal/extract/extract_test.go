@@ -86,10 +86,10 @@ func TestParseInfo(t *testing.T) {
 			out:  "Producer:  x\nPages:     1\n",
 			want: Info{Pages: 1},
 		},
-		{name: "no page count", out: "Title: x\n", wantErr: "нет числа страниц"},
-		{name: "garbled page count", out: "Pages: many\n", wantErr: "непонятное число страниц"},
-		{name: "zero pages", out: "Pages: 0\n", wantErr: "непонятное число страниц"},
-		{name: "empty output", out: "", wantErr: "нет числа страниц"},
+		{name: "no page count", out: "Title: x\n", wantErr: "has no page count"},
+		{name: "garbled page count", out: "Pages: many\n", wantErr: "cannot read the page count"},
+		{name: "zero pages", out: "Pages: 0\n", wantErr: "cannot read the page count"},
+		{name: "empty output", out: "", wantErr: "has no page count"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -268,7 +268,7 @@ func TestRunErrors(t *testing.T) {
 		fake := fakeTools("one", "two")
 		fake.Stub("pdfinfo", []byte("Pages: 5\n"), nil)
 		_, err := Run(context.Background(), ws, fake, quiet)
-		if err == nil || !strings.Contains(err.Error(), "страниц: 2") || !strings.Contains(err.Error(), "5") {
+		if err == nil || !strings.Contains(err.Error(), "returned 2 pages") || !strings.Contains(err.Error(), "5") {
 			t.Errorf("error = %v, want a page count mismatch", err)
 		}
 	})

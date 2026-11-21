@@ -37,7 +37,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 
 ## Rules
 
-- **Language.** Code comments and commit messages are in English; everything the user reads (CLI output, errors, log messages, README) is in Russian.
+- **Language.** Everything is in English: code comments, commit messages, CLI output, errors, log messages, README and the example config. The only Russian strings are content of the audiobook itself: `chapters.IntroTitle`, the fallback section titles and `speech.URLWord`.
 - **External tools** are run only through `execx.Runner`. Unit tests use `execx.FakeRunner`; tests with real tools skip themselves when the tool is missing.
 - **Backends** are created by a factory (`translate.New`, `tts.New`) and injected through `pipeline.Deps`. Tests use `translate.FakeTranslator` and `tts.FakeSynthesizer`, which count their calls — assert on the calls to prove that work was *not* repeated.
 - **Speech backends.** An engine that is expensive to start implements `tts.BatchSynthesizer`; the synth stage then gives each worker one batch instead of one segment. A per-segment error is returned in the slice and recorded as a failed unit; an engine that cannot run at all is a fatal error.

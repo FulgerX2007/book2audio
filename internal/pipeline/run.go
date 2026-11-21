@@ -66,13 +66,13 @@ func Run(ctx context.Context, ws *workspace.Workspace, deps Deps, log *slog.Logg
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		log.Info("этап", "stage", stage)
+		log.Info("stage", "stage", stage)
 		summary, err := runStage(ctx, ws, deps, log, stage)
 		if summary != "" {
 			fmt.Fprintf(out, "%-9s %s\n", stage+":", summary)
 		}
 		if err != nil {
-			return fmt.Errorf("этап %s: %w", stage, err)
+			return fmt.Errorf("stage %s: %w", stage, err)
 		}
 	}
 	return nil
@@ -92,13 +92,13 @@ func selectStages(opts RunOptions) ([]string, error) {
 		}
 	}
 	if from > to {
-		return nil, fmt.Errorf("этап --from %s идёт после этапа --to %s", opts.From, opts.To)
+		return nil, fmt.Errorf("the --from stage %s comes after the --to stage %s", opts.From, opts.To)
 	}
 	return Stages[from : to+1], nil
 }
 
 func unknownStage(flag, name string) error {
-	return fmt.Errorf("%s: неизвестный этап %q (есть: %s)", flag, name, strings.Join(Stages, ", "))
+	return fmt.Errorf("%s: unknown stage %q (stages: %s)", flag, name, strings.Join(Stages, ", "))
 }
 
 // runStage runs one stage on the whole book and returns a one-line summary.
@@ -106,11 +106,11 @@ func runStage(ctx context.Context, ws *workspace.Workspace, deps Deps, log *slog
 	switch stage {
 	case extract.Stage:
 		res, err := extract.Run(ctx, ws, deps.Runner, log)
-		return fmt.Sprintf("страниц %d, извлечено сейчас %d (через OCR %d), с ошибкой %d",
+		return fmt.Sprintf("%d pages, %d extracted now (%d by OCR), %d failed",
 			res.Pages, res.Extracted, res.OCR, res.Failed), err
 	case chapters.Stage:
 		res, err := chapters.Run(ctx, ws, log)
-		return fmt.Sprintf("глав %d, записано сейчас %d, оставлено с ручными правками %d",
+		return fmt.Sprintf("%d chapters, %d written now, %d kept with hand edits",
 			res.Chapters, res.Written, res.Kept), err
 	case StageTranslate:
 		tr, err := deps.NewTranslator(ws.Config.Translate)
@@ -118,7 +118,7 @@ func runStage(ctx context.Context, ws *workspace.Workspace, deps Deps, log *slog
 			return "", err
 		}
 		res, err := Translate(ctx, ws, tr, log, TranslateOptions{Chapter: AllChapters})
-		return fmt.Sprintf("фрагментов %d, переведено сейчас %d, с ошибкой %d, собрано глав %d, оставлено с ручными правками %d",
+		return fmt.Sprintf("%d chunks, %d translated now, %d failed, %d chapters assembled, %d kept with hand edits",
 			res.Chunks, res.Translated, res.Failed, res.Assembled, res.Kept), err
 	case StageSynth:
 		syn, err := deps.NewSynthesizer(ws.Config.TTS, deps.Runner)
@@ -126,15 +126,15 @@ func runStage(ctx context.Context, ws *workspace.Workspace, deps Deps, log *slog
 			return "", err
 		}
 		res, err := Synth(ctx, ws, syn, log, SynthOptions{Chapter: AllChapters, Runner: deps.Runner})
-		return fmt.Sprintf("сегментов %d, озвучено сейчас %d, с ошибкой %d",
+		return fmt.Sprintf("%d segments, %d synthesised now, %d failed",
 			res.Segments, res.Synthesized, res.Failed), err
 	case StageBuild:
 		res, err := Build(ctx, ws, deps.Runner, log)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("склеено глав сейчас %d, закодировано файлов сейчас %d\n%s",
+		return fmt.Sprintf("%d chapters joined now, %d files encoded now\n%s",
 			res.Joined, res.Encoded, strings.Join(res.Outputs, "\n")), nil
 	}
-	return "", fmt.Errorf("неизвестный этап %q", stage)
+	return "", fmt.Errorf("unknown stage %q", stage)
 }

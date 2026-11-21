@@ -102,7 +102,7 @@ func TestRunAllStages(t *testing.T) {
 	if f.tr.Calls() != tr || f.syn.Calls() != syn || len(f.runner.CallsTo("ffmpeg")) != ffmpeg {
 		t.Error("the second run called a backend again")
 	}
-	if !strings.Contains(out.String(), "переведено сейчас 0") || !strings.Contains(out.String(), "озвучено сейчас 0") {
+	if !strings.Contains(out.String(), "0 translated now") || !strings.Contains(out.String(), "0 synthesised now") {
 		t.Errorf("summary of the second run:\n%s", out.String())
 	}
 }
@@ -137,9 +137,9 @@ func TestRunFromTo(t *testing.T) {
 		opts RunOptions
 		want string
 	}{
-		{RunOptions{From: "polish"}, `--from: неизвестный этап "polish"`},
-		{RunOptions{To: "publish"}, `--to: неизвестный этап "publish"`},
-		{RunOptions{From: "synth", To: "extract"}, "идёт после"},
+		{RunOptions{From: "polish"}, `--from: unknown stage "polish"`},
+		{RunOptions{To: "publish"}, `--to: unknown stage "publish"`},
+		{RunOptions{From: "synth", To: "extract"}, "comes after"},
 	} {
 		err := Run(context.Background(), ws, f.deps(), quiet, &out, tt.opts)
 		if err == nil || !strings.Contains(err.Error(), tt.want) {
@@ -161,13 +161,13 @@ func TestRunStopsAtAStageWithFailedUnits(t *testing.T) {
 	var out bytes.Buffer
 
 	err := Run(context.Background(), ws, f.deps(), quiet, &out, RunOptions{})
-	if !errors.Is(err, workspace.ErrUnitsFailed) || !strings.Contains(err.Error(), "этап translate") {
+	if !errors.Is(err, workspace.ErrUnitsFailed) || !strings.Contains(err.Error(), "stage translate") {
 		t.Fatalf("error = %v, want ErrUnitsFailed from the translate stage", err)
 	}
 	if f.syn.Calls() != 0 || len(f.runner.CallsTo("ffmpeg")) != 0 {
 		t.Error("later stages ran although translate had failed units")
 	}
-	if !strings.Contains(out.String(), "translate:") || !strings.Contains(out.String(), "с ошибкой 1") {
+	if !strings.Contains(out.String(), "translate:") || !strings.Contains(out.String(), "1 failed") {
 		t.Errorf("the summary of the failed stage is missing:\n%s", out.String())
 	}
 
@@ -283,7 +283,7 @@ func TestStatus(t *testing.T) {
 		}
 		var out bytes.Buffer
 		st.Write(&out)
-		if !strings.Contains(out.String(), ws.Dir) || strings.Contains(out.String(), "Ошибки:") || strings.Contains(out.String(), "Изменены вручную") {
+		if !strings.Contains(out.String(), ws.Dir) || strings.Contains(out.String(), "Failures:") || strings.Contains(out.String(), "Edited by hand") {
 			t.Errorf("status of a new book:\n%s", out.String())
 		}
 	})
@@ -308,7 +308,7 @@ func TestStatus(t *testing.T) {
 		}
 		var out bytes.Buffer
 		st.Write(&out)
-		for _, col := range []string{"Этап", "Всего", "Готово", "Ошибок", "extract", "translate", "synth", "build"} {
+		for _, col := range []string{"Stage", "Total", "Done", "Failed", "extract", "translate", "synth", "build"} {
 			if !strings.Contains(out.String(), col) {
 				t.Errorf("the table lacks %q:\n%s", col, out.String())
 			}
@@ -347,8 +347,8 @@ func TestStatus(t *testing.T) {
 
 		var out bytes.Buffer
 		st.Write(&out)
-		for _, want := range []string{"Ошибки:", "translate ch02: сервер недоступен", "результат можно положить вручную: " + fail.Out,
-			"Изменены вручную", ws.ChapterPath(1), ws.TranslatedChapterPath(1)} {
+		for _, want := range []string{"Failures:", "translate ch02: сервер недоступен", "a result can be supplied by hand at: " + fail.Out,
+			"Edited by hand", ws.ChapterPath(1), ws.TranslatedChapterPath(1)} {
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("status lacks %q:\n%s", want, out.String())
 			}
@@ -408,7 +408,7 @@ func TestStatusChapters(t *testing.T) {
 		}
 		var out bytes.Buffer
 		st.Write(&out)
-		for _, want := range []string{"Главы:", "Заголовок", "Перевод", "Озвучка", "Chapter 2: The Middle", "✓"} {
+		for _, want := range []string{"Chapters:", "Title", "Translation", "Speech", "Chapter 2: The Middle", "✓"} {
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("status lacks %q:\n%s", want, out.String())
 			}
@@ -444,7 +444,7 @@ func TestStatusChapters(t *testing.T) {
 		}
 		var out bytes.Buffer
 		st.Write(&out)
-		if !strings.Contains(out.String(), "ошибок 1") {
+		if !strings.Contains(out.String(), "failed 1") {
 			t.Errorf("status does not show the failed chunk of chapter 2:\n%s", out.String())
 		}
 	})
@@ -495,7 +495,7 @@ func TestProgressAndShorten(t *testing.T) {
 		{0, 0, 0, false, "—"},
 		{3, 8, 0, false, "3/8"},
 		{8, 8, 0, true, "8/8 ✓"},
-		{7, 8, 1, false, "7/8, ошибок 1"},
+		{7, 8, 1, false, "7/8, failed 1"},
 		{4, 0, 0, false, "4/?"},
 		{0, 5, 0, false, "0/5"},
 	} {

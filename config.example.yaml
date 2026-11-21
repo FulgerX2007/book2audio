@@ -1,66 +1,66 @@
-# Пример конфига book2audio. Все ключи необязательны: показаны значения по
-# умолчанию. Без умолчания только translate.model и tts.args — они нужны
-# этапам translate и synth.
+# Example book2audio config. Every key is optional: the values shown are the
+# defaults. Only translate.model and tts.args have no default; the translate
+# and synth stages need them.
 #
 #   book2audio init book.pdf --config config.yaml
 #
-# После init главный конфиг книги — work/<slug>/config.yaml.
+# After init the book's main config is work/<slug>/config.yaml.
 
-source_lang: en            # язык книги
-target_lang: ru            # язык перевода и озвучки
-workdir: work              # где создаются рабочие папки книг
+source_lang: en            # language of the book
+target_lang: ru            # language of the translation and the speech
+workdir: work              # where the book working folders are created
 
-book:                      # теги аудиокниги; пусто — из метаданных PDF
+book:                      # audiobook tags; empty means taken from the PDF metadata
   title: ""
   author: ""
 
 extract:
-  ocr_min_chars: 50        # страница, на которой меньше символов, распознаётся через OCR
-  ocr_lang: ""             # код языка tesseract; пусто — выводится из source_lang (en → eng)
+  ocr_min_chars: 50        # a page with fewer characters goes through OCR
+  ocr_lang: ""             # tesseract language code; empty means derived from source_lang (en → eng)
   ocr_dpi: 300
   ocr_workers: 4
 
 chapters:
   heading_regex: '^(Chapter|Part|Глава|Часть)\s+\S+'
-  heading_max_chars: 80    # заголовок — отдельная строка не длиннее этого
-  toc_max_headings: 3      # страница, где совпадений больше, считается оглавлением
-  fallback_pages: 20       # размер раздела, если заголовки не найдены
+  heading_max_chars: 80    # a heading is a line of its own, no longer than this
+  toc_max_headings: 3      # a page with more matches is treated as a table of contents
+  fallback_pages: 20       # section size when no headings are found
 
 translate:
-  backend: openai                       # OpenAI-совместимый API: локальный сервер или облако
-  base_url: http://localhost:11434/v1   # Ollama; для облака — адрес его API
-  model: ""                             # обязательно: имя модели на сервере
-  api_key_env: B2A_API_KEY              # переменная окружения с ключом; локальным серверам ключ не нужен
+  backend: openai                       # OpenAI-compatible API: a local server or a cloud one
+  base_url: http://localhost:11434/v1   # Ollama; for a cloud service, the address of its API
+  model: ""                             # required: the model name on the server
+  api_key_env: B2A_API_KEY              # environment variable holding the key; local servers need none
   temperature: 0.2
-  chunk_chars: 3500        # размер фрагмента перевода
+  chunk_chars: 3500        # size of a translation chunk
   workers: 4
-  max_retries: 5           # повторы при сбоях связи: 429, 5xx, таймаут
+  max_retries: 5           # retries on transport failures: 429, 5xx, timeout
 
-# Озвучка. Два бэкенда:
-#   piper  — команда запускается на каждый сегмент: текст на стандартный ввод,
-#            WAV по пути {out}. Подходит для Piper и любого похожего движка.
-#   silero — scripts/silero_tts.py: модель загружается один раз на пачку
-#            сегментов, ударения и омографы Silero расставляет сам. Пример:
+# Speech. Two backends:
+#   piper  — the command runs for every segment: text on standard input,
+#            WAV at the {out} path. Fits Piper and any similar engine.
+#   silero — scripts/silero_tts.py: the model is loaded once per batch of
+#            segments, and Silero places stress and homographs itself. Example:
 #              backend: silero
-#              command: /полный/путь/scripts/silero_tts.py
+#              command: /full/path/to/scripts/silero_tts.py
 #              args: ["--speaker", "xenia"]
 #              segment_chars: 800
 tts:
   backend: piper
   command: piper
-  # Для piper обязательно: аргументы запуска движка. {out} заменяется путём WAV-файла.
-  # Текст сегмента подаётся на стандартный ввод одной строкой.
+  # Required for piper: the engine arguments. {out} is replaced with the WAV path.
+  # The segment text is given on standard input as one line.
   args: ["--model", "voices/ru_RU-irina-medium.onnx", "--output_file", "{out}"]
-  segment_chars: 1200      # абзац длиннее делится по предложениям
+  segment_chars: 1200      # a longer paragraph is split by sentences
   workers: 2
-  # Необязательно: внешняя команда, расставляющая ударения перед озвучкой.
-  # Получает на стандартный ввод по одному сегменту в строке и должна вывести
-  # столько же строк. Запускается один раз на все сегменты запуска.
-  # Piper понимает знак ударения U+0301 после ударной гласной: «го́лоса».
+  # Optional: an external command that adds stress marks before speech.
+  # It receives one segment per line on standard input and must print the same
+  # number of lines. It runs once for all segments of a run.
+  # Piper understands the stress mark U+0301 after the stressed vowel: «го́лоса».
   accent_command: ""
   accent_args: []
 
 audio:
-  format: m4b              # m4b — один файл с главами; mp3 — файл на главу
+  format: m4b              # m4b is one file with chapters; mp3 is a file per chapter
   bitrate: 64k
-  paragraph_pause_ms: 400  # пауза между абзацами
+  paragraph_pause_ms: 400  # pause between paragraphs

@@ -114,7 +114,7 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 		selected = selected || opts.Chapter == s.N
 	}
 	if opts.Chapter != AllChapters && !selected {
-		return res, fmt.Errorf("главы %d нет в chapters.json", opts.Chapter)
+		return res, fmt.Errorf("chapter %d is not in chapters.json", opts.Chapter)
 	}
 
 	var jobs []translateJob
@@ -166,7 +166,7 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 	}
 
 	if len(jobs) > 0 {
-		log.Info("перевод", "chunks", len(jobs), "workers", ws.Config.Translate.Workers)
+		log.Info("translating", "chunks", len(jobs), "workers", ws.Config.Translate.Workers)
 	}
 	var mu sync.Mutex // guards res
 	err = workpool.Run(ctx, ws.Config.Translate.Workers, jobs, func(ctx context.Context, job translateJob) error {
@@ -188,7 +188,7 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 					attrs = append(attrs, "answer", path)
 				}
 			}
-			log.Warn("фрагмент не переведён", attrs...)
+			log.Warn("chunk not translated", attrs...)
 			mu.Lock()
 			res.Failed++
 			mu.Unlock()
@@ -205,7 +205,7 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 		done := res.Translated
 		mu.Unlock()
 		if done%progressEvery == 0 {
-			log.Info("переведено фрагментов", "done", done, "of", len(jobs))
+			log.Info("chunks translated", "done", done, "of", len(jobs))
 		}
 		return nil
 	})
@@ -238,7 +238,7 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 		return res, err
 	}
 	if res.Failed > 0 {
-		return res, fmt.Errorf("%w: перевод, фрагментов с ошибкой: %d", workspace.ErrUnitsFailed, res.Failed)
+		return res, fmt.Errorf("%w: translate, failed chunks: %d", workspace.ErrUnitsFailed, res.Failed)
 	}
 	return res, nil
 }
@@ -247,7 +247,7 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 func planChapter(ws *workspace.Workspace, n int, glossary translate.Glossary) (chapterPlan, error) {
 	ch, err := chunk.ReadChapter(ws.ChapterPath(n))
 	if err != nil {
-		return chapterPlan{}, fmt.Errorf("глава %d: %w", n, err)
+		return chapterPlan{}, fmt.Errorf("chapter %d: %w", n, err)
 	}
 	cfg := ws.Config
 	plan := chapterPlan{n: n, chunks: chunk.Split(ch, cfg.Translate.ChunkChars)}
@@ -315,7 +315,7 @@ func RejectedPath(chunkPath string) string {
 // from the length of the source.
 func checkTranslation(source, translated string) error {
 	if translated == "" {
-		return errors.New("перевод пуст")
+		return errors.New("the translation is empty")
 	}
 	src := utf8.RuneCountInString(source)
 	if src < minCheckedLength {
@@ -323,7 +323,7 @@ func checkTranslation(source, translated string) error {
 	}
 	ratio := float64(utf8.RuneCountInString(translated)) / float64(src)
 	if ratio < minLengthRatio || ratio > maxLengthRatio {
-		return fmt.Errorf("длина перевода относится к длине оригинала как %.2f (допустимо от %.1f до %.1f)",
+		return fmt.Errorf("the translation is %.2f times as long as the source (allowed: %.1f to %.1f)",
 			ratio, minLengthRatio, maxLengthRatio)
 	}
 	return nil
@@ -384,7 +384,7 @@ func assembleChapter(ws *workspace.Workspace, plan chapterPlan, log *slog.Logger
 	if protected, err := ws.Manifest.Protected(StageTranslated, id); err != nil {
 		return false, false, err
 	} else if protected {
-		log.Warn("перевод главы изменён вручную и не пересобран; --force пересоберёт его из фрагментов", "file", out)
+		log.Warn("the chapter translation was edited by hand and is kept; --force reassembles it from the chunks", "file", out)
 		return false, true, nil
 	}
 	if err := workspace.WriteFileAtomic(out, []byte(chunk.Join(plan.chunks, texts)), 0o644); err != nil {

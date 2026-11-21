@@ -143,8 +143,8 @@ func TestOpenAIRetriesTransportFailures(t *testing.T) {
 		{"429 then success", []reply{{status: 429, body: "slow down"}, ok("ок")}, 3, 2, ""},
 		{"500 and 503 then success", []reply{{status: 500}, {status: 503}, ok("ок")}, 3, 3, ""},
 		{"408 then success", []reply{{status: 408}, ok("ок")}, 1, 2, ""},
-		{"500 until the retries run out", []reply{{status: 500, body: `{"error":{"message":"overloaded"}}`}}, 2, 3, "после 3 попыток"},
-		{"no retries configured", []reply{{status: 502}}, 0, 1, "после 1 попыток"},
+		{"500 until the retries run out", []reply{{status: 500, body: `{"error":{"message":"overloaded"}}`}}, 2, 3, "after 3 attempts"},
+		{"no retries configured", []reply{{status: 502}}, 0, 1, "after 1 attempts"},
 		{"400 is not retried", []reply{{status: 400, body: `{"error":{"message":"bad model"}}`}}, 5, 1, "bad model"},
 		{"401 is not retried", []reply{{status: 401, body: "unauthorized"}}, 5, 1, "401"},
 		{"404 is not retried", []reply{{status: 404, body: "no such route"}}, 5, 1, "no such route"},
@@ -221,7 +221,7 @@ func TestOpenAIBadResponses(t *testing.T) {
 	}{
 		{"empty content", ok("   "), ErrEmptyResponse, ""},
 		{"no choices", reply{status: 200, body: `{"choices":[]}`}, ErrEmptyResponse, ""},
-		{"not JSON", reply{status: 200, body: "<html>proxy error</html>"}, nil, "не разобран"},
+		{"not JSON", reply{status: 200, body: "<html>proxy error</html>"}, nil, "cannot parse"},
 		{"error object with status 200", reply{status: 200, body: `{"error":{"message":"model is loading"}}`}, nil, "model is loading"},
 	}
 	for _, tt := range tests {
@@ -247,7 +247,7 @@ func TestOpenAINetworkErrorIsRetried(t *testing.T) {
 	srv.Close() // nothing listens there any more
 
 	_, err := newClient(t, url, 2).Translate(context.Background(), sampleRequest)
-	if err == nil || !strings.Contains(err.Error(), "после 3 попыток") {
+	if err == nil || !strings.Contains(err.Error(), "after 3 attempts") {
 		t.Errorf("error = %v, want a failure after 3 attempts", err)
 	}
 }
