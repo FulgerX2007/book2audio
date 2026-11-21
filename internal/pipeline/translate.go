@@ -42,6 +42,9 @@ const (
 	minCheckedLength = 40 // shorter texts are not checked: ratios of a few words vary too much
 )
 
+// progressEvery is how often a stage reports its progress, in units.
+const progressEvery = 10
+
 // TranslateOptions select what the translate stage works on.
 type TranslateOptions struct {
 	Chapter int // chapter number, or AllChapters
@@ -194,7 +197,11 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 		}
 		mu.Lock()
 		res.Translated++
+		done := res.Translated
 		mu.Unlock()
+		if done%progressEvery == 0 {
+			log.Info("переведено фрагментов", "done", done, "of", len(jobs))
+		}
 		return nil
 	})
 	if err != nil {

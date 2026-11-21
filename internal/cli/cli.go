@@ -407,11 +407,15 @@ func setupRun(deps Deps) func(*flag.FlagSet) RunFunc {
 // setupStatus is the Setup of "status".
 func setupStatus(*flag.FlagSet) RunFunc {
 	return func(_ context.Context, inv *Invocation) error {
-		ws, err := openBook(inv)
+		if len(inv.Args) != 1 {
+			return &UsageError{Msg: "нужен ровно один аргумент — путь к PDF или к рабочей папке книги"}
+		}
+		// status only reads, so it does not take the lock: it can be run
+		// while another process is working on the book.
+		ws, err := workspace.Open(inv.Args[0], workspace.OpenOptions{ConfigPath: inv.ConfigPath, Workdir: inv.Workdir})
 		if err != nil {
 			return err
 		}
-		defer ws.Close()
 
 		st, err := pipeline.ReadStatus(ws)
 		if err != nil {

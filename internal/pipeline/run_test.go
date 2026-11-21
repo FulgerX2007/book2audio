@@ -375,3 +375,138 @@ func TestStatus(t *testing.T) {
 		}
 	})
 }
+
+func TestStatusChapters(t *testing.T) {
+	t.Run("before the chapters stage there is no chapter list", func(t *testing.T) {
+		st, err := ReadStatus(emptyBook(t))
+		if err != nil || len(st.Chapters) != 0 {
+			t.Errorf("chapters = %+v, %v; want none", st.Chapters, err)
+		}
+	})
+
+	t.Run("finished book", func(t *testing.T) {
+		ws := emptyBook(t)
+		if err := Run(context.Background(), ws, newFakes().deps(), quiet, &bytes.Buffer{}, RunOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		st, err := ReadStatus(ws)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(st.Chapters) != 2 {
+			t.Fatalf("chapters = %+v, want 2", st.Chapters)
+		}
+		for _, ch := range st.Chapters {
+			if ch.Chunks == 0 || ch.ChunksDone != ch.Chunks || !ch.Translated ||
+				ch.Segments == 0 || ch.SegmentsDone != ch.Segments || !ch.Audio ||
+				ch.ChunksFailed != 0 || ch.SegmentsFailed != 0 {
+				t.Errorf("chapter %d = %+v, want everything done", ch.N, ch)
+			}
+		}
+		if st.Chapters[0].Title != "Chapter 1: The Start" {
+			t.Errorf("title = %q", st.Chapters[0].Title)
+		}
+		var out bytes.Buffer
+		st.Write(&out)
+		for _, want := range []string{"Главы:", "Заголовок", "Перевод", "Озвучка", "Chapter 2: The Middle", "✓"} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("status lacks %q:\n%s", want, out.String())
+			}
+		}
+	})
+
+	t.Run("partly done book", func(t *testing.T) {
+		ws := emptyBook(t)
+		f := newFakes()
+		f.tr.Fail = func(req translate.Request) error {
+			if strings.Contains(req.Text, "Paragraph C ") {
+				return errors.New("сервер недоступен")
+			}
+			return nil
+		}
+		// Translation fails in chapter 2, so only chapter 1 is assembled;
+		// then chapter 1 alone is synthesised.
+		Run(context.Background(), ws, f.deps(), quiet, &bytes.Buffer{}, RunOptions{})
+		if _, err := Synth(context.Background(), ws, f.syn, quiet, SynthOptions{Chapter: 1}); err != nil {
+			t.Fatal(err)
+		}
+
+		st, err := ReadStatus(ws)
+		if err != nil {
+			t.Fatal(err)
+		}
+		one, two := st.Chapters[0], st.Chapters[1]
+		if !one.Translated || one.ChunksDone != one.Chunks || one.Segments == 0 || one.SegmentsDone != one.Segments || one.Audio {
+			t.Errorf("chapter 1 = %+v, want translated and spoken, audio not joined", one)
+		}
+		if two.Translated || two.ChunksFailed != 1 || two.ChunksDone != two.Chunks-1 || two.Segments != 0 || two.SegmentsDone != 0 {
+			t.Errorf("chapter 2 = %+v, want one failed chunk and no speech", two)
+		}
+		var out bytes.Buffer
+		st.Write(&out)
+		if !strings.Contains(out.String(), "ошибок 1") {
+			t.Errorf("status does not show the failed chunk of chapter 2:\n%s", out.String())
+		}
+	})
+
+	t.Run("while a stage is running the totals are unknown", func(t *testing.T) {
+		ws := emptyBook(t)
+		f := newFakes()
+		// Interrupt the translation: the chunk lists are not written yet,
+		// only the units finished so far are in the manifest.
+		ctx, cancel := context.WithCancel(context.Background())
+		f.tr.Fail = func(translate.Request) error {
+			if f.tr.Calls() >= 2 {
+				cancel()
+				return context.Canceled
+			}
+			return nil
+		}
+		Run(ctx, ws, f.deps(), quiet, &bytes.Buffer{}, RunOptions{})
+
+		st, err := ReadStatus(ws)
+		if err != nil {
+			t.Fatal(err)
+		}
+		done := 0
+		for _, ch := range st.Chapters {
+			if ch.Chunks != 0 || ch.Translated {
+				t.Errorf("chapter %d = %+v, want an unknown total", ch.N, ch)
+			}
+			done += ch.ChunksDone
+		}
+		if done == 0 {
+			t.Error("no finished chunk is counted")
+		}
+		var out bytes.Buffer
+		st.Write(&out)
+		if !strings.Contains(out.String(), "/?") {
+			t.Errorf("status does not mark the unknown total:\n%s", out.String())
+		}
+	})
+}
+
+func TestProgressAndShorten(t *testing.T) {
+	for _, tt := range []struct {
+		done, total, failed int
+		complete            bool
+		want                string
+	}{
+		{0, 0, 0, false, "—"},
+		{3, 8, 0, false, "3/8"},
+		{8, 8, 0, true, "8/8 ✓"},
+		{7, 8, 1, false, "7/8, ошибок 1"},
+		{4, 0, 0, false, "4/?"},
+		{0, 5, 0, false, "0/5"},
+	} {
+		if got := progress(tt.done, tt.total, tt.failed, tt.complete); got != tt.want {
+			t.Errorf("progress(%d, %d, %d, %v) = %q, want %q", tt.done, tt.total, tt.failed, tt.complete, got, tt.want)
+		}
+	}
+	if got := shorten("короткий", 40); got != "короткий" {
+		t.Errorf("shorten of a short title = %q", got)
+	}
+	if got := shorten(strings.Repeat("я", 50), 40); len([]rune(got)) != 40 || !strings.HasSuffix(got, "…") {
+		t.Errorf("shorten of a long title = %q", got)
+	}
+}

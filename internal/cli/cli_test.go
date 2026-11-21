@@ -430,6 +430,12 @@ func TestStageCommandsOpenTheBook(t *testing.T) {
 		if code != ExitError || !strings.Contains(stderr, workspace.ErrLocked.Error()) {
 			t.Errorf("exit code = %d, stderr:\n%s", code, stderr)
 		}
+
+		// status only reads: it works while the book is locked.
+		code, stdout, stderr := runBuiltin("status", pdf, "--workdir", workdir)
+		if code != ExitOK || !strings.Contains(stdout, "Этап") {
+			t.Errorf("status of a locked book: exit code = %d, stderr:\n%s", code, stderr)
+		}
 	})
 }
 

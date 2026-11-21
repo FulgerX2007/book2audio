@@ -149,7 +149,11 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 		}
 		mu.Lock()
 		res.Synthesized++
+		done := res.Synthesized
 		mu.Unlock()
+		if done%progressEvery == 0 {
+			log.Info("озвучено сегментов", "done", done, "of", len(jobs))
+		}
 		return nil
 	}
 
