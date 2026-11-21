@@ -69,6 +69,7 @@ type Workspace struct {
 	Dir    string        // work/<slug>
 	Config config.Config // config of this run
 	Source Source        // the PDF as recorded at init time
+	PDF    string        // where the PDF is now: the argument of Open or Source.Path
 
 	// Manifest is the state of the stages. Change it only while holding
 	// the lock taken by Lock.
@@ -212,7 +213,15 @@ func Open(arg string, opts OpenOptions) (*Workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Workspace{Dir: dir, Config: cfg, Source: hdr.Source, Manifest: manifest}, nil
+	pdf := hdr.Source.Path
+	if !info.IsDir() {
+		// The book was opened by its PDF: use that file even if it has
+		// been moved since init (its content was checked against the manifest).
+		if pdf, err = filepath.Abs(arg); err != nil {
+			return nil, fmt.Errorf("книга: %w", err)
+		}
+	}
+	return &Workspace{Dir: dir, Config: cfg, Source: hdr.Source, PDF: pdf, Manifest: manifest}, nil
 }
 
 // findByPDF locates the working folder created for the PDF at pdfPath.

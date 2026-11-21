@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"text/tabwriter"
 
+	"github.com/FulgerX2007/book2audio/internal/execx"
+	"github.com/FulgerX2007/book2audio/internal/extract"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
@@ -72,7 +74,7 @@ type App struct {
 
 // New returns an App with the built-in book2audio commands.
 func New(stdout, stderr io.Writer) *App {
-	return &App{Commands: builtin(), Stdout: stdout, Stderr: stderr}
+	return &App{Commands: Builtin(execx.OSRunner{}), Stdout: stdout, Stderr: stderr}
 }
 
 // Run parses args (without the program name), runs the selected built-in
@@ -219,12 +221,13 @@ func commandUsage(w io.Writer, cmd Command, fs *flag.FlagSet) {
 	fs.SetOutput(io.Discard)
 }
 
-// builtin returns the book2audio subcommands in pipeline order.
-func builtin() []Command {
+// Builtin returns the book2audio subcommands in pipeline order. External
+// tools are run through runner.
+func Builtin(runner execx.Runner) []Command {
 	const book = "<book.pdf | work/<slug>>"
 	return []Command{
 		{Name: "init", Args: "<book.pdf>", Summary: "создать рабочую папку книги", Setup: setupInit},
-		{Name: "extract", Args: book, Summary: "извлечь текст по страницам (сканы — через OCR)", Setup: stub},
+		{Name: "extract", Args: book, Summary: "извлечь текст по страницам (сканы — через OCR)", Setup: setupExtract(runner)},
 		{Name: "chapters", Args: book, Summary: "очистить текст и разбить его на главы", Setup: stub},
 		{Name: "translate", Args: book, Summary: "перевести главы", Setup: stub},
 		{Name: "synth", Args: book, Summary: "озвучить переведённые главы", Setup: stub},
@@ -251,6 +254,24 @@ func setupInit(fs *flag.FlagSet) RunFunc {
 		}
 		fmt.Fprintf(inv.Stdout, "Рабочая папка: %s\nКонфиг книги:  %s\n", ws.Dir, ws.ConfigPath())
 		return nil
+	}
+}
+
+// setupExtract is the Setup of "extract".
+func setupExtract(runner execx.Runner) func(*flag.FlagSet) RunFunc {
+	return func(*flag.FlagSet) RunFunc {
+		return func(ctx context.Context, inv *Invocation) error {
+			ws, err := openBook(inv)
+			if err != nil {
+				return err
+			}
+			defer ws.Close()
+
+			res, err := extract.Run(ctx, ws, runner, inv.Log)
+			fmt.Fprintf(inv.Stdout, "Страниц: %d, извлечено сейчас: %d (через OCR: %d), с ошибкой: %d\n",
+				res.Pages, res.Extracted, res.OCR, res.Failed)
+			return err
+		}
 	}
 }
 

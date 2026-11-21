@@ -11,6 +11,10 @@ import (
 	"sync"
 )
 
+// ErrUnitsFailed is wrapped by the error a stage returns when some of its
+// units failed; the failures are recorded in the manifest.
+var ErrUnitsFailed = errors.New("этап завершён с ошибками")
+
 // Status is the state of one unit of work.
 type Status string
 

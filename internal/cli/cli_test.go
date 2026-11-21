@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
@@ -35,7 +36,7 @@ func TestBuiltinCommands(t *testing.T) {
 	want := []string{"init", "extract", "chapters", "translate", "synth", "build", "run", "status"}
 
 	var got []string
-	for _, cmd := range builtin() {
+	for _, cmd := range Builtin(execx.NewFakeRunner()) {
 		got = append(got, cmd.Name)
 		if cmd.Setup == nil {
 			t.Errorf("command %q has no Setup", cmd.Name)
@@ -396,13 +397,15 @@ func TestInitCommand(t *testing.T) {
 
 func TestStageCommandsOpenTheBook(t *testing.T) {
 	stages := []string{"extract", "chapters", "translate", "synth", "build", "run", "status"}
+	// Stages that are still stubs; the list shrinks as stages are implemented.
+	stubs := []string{"chapters", "translate", "synth", "build", "run", "status"}
 
 	t.Run("initialised book reaches the stage", func(t *testing.T) {
 		pdf, workdir := writeBook(t)
 		if code, _, stderr := runBuiltin("init", pdf, "--workdir", workdir); code != ExitOK {
 			t.Fatalf("init failed:\n%s", stderr)
 		}
-		for _, stage := range stages {
+		for _, stage := range stubs {
 			// Both forms of the argument: the PDF and the working folder.
 			for _, arg := range []string{pdf, filepath.Join(workdir, "my-book")} {
 				code, _, stderr := runBuiltin(stage, arg, "--workdir", workdir)
@@ -500,5 +503,34 @@ func TestContextReachesCommand(t *testing.T) {
 	}
 	if !errors.Is(gotErr, context.Canceled) {
 		t.Errorf("context error = %v, want context.Canceled", gotErr)
+	}
+}
+
+func TestExtractCommand(t *testing.T) {
+	pdf, workdir := writeBook(t)
+	fake := execx.NewFakeRunner()
+	fake.Stub("pdfinfo", []byte("Title:   Demo\nPages:   2\n"), nil)
+	fake.Stub("pdftotext", []byte("first page\n\fsecond page\n\f"), nil)
+	app, stdout, stderr := newTestApp(Builtin(fake)...)
+
+	if code := app.Run(context.Background(), []string{"init", pdf, "--workdir", workdir}); code != ExitOK {
+		t.Fatalf("init failed:\n%s", stderr.String())
+	}
+	stdout.Reset()
+	if code := app.Run(context.Background(), []string{"extract", pdf, "--workdir", workdir}); code != ExitOK {
+		t.Fatalf("extract: exit code = %d; stderr:\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Страниц: 2, извлечено сейчас: 2") {
+		t.Errorf("stdout lacks the summary:\n%s", stdout.String())
+	}
+	got, err := os.ReadFile(filepath.Join(workdir, "my-book", "01-pages", "p0002.txt"))
+	if err != nil || string(got) != "second page\n" {
+		t.Errorf("page 2 = %q, %v", got, err)
+	}
+
+	// A failing tool makes the subcommand fail.
+	fake.Stub("pdfinfo", nil, errors.New("pdfinfo: exit status 1"))
+	if code := app.Run(context.Background(), []string{"extract", pdf, "--workdir", workdir}); code != ExitError {
+		t.Errorf("extract with a failing tool: exit code = %d, want %d", code, ExitError)
 	}
 }
