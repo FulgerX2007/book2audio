@@ -66,7 +66,7 @@ type manifestHeader struct {
 
 // Workspace is an opened working folder.
 type Workspace struct {
-	Dir    string        // work/<slug>
+	Dir    string        // work/<slug>, absolute
 	Config config.Config // config of this run
 	Source Source        // the PDF as recorded at init time
 	PDF    string        // where the PDF is now: the argument of Open or Source.Path
@@ -199,6 +199,11 @@ func Open(arg string, opts OpenOptions) (*Workspace, error) {
 	if hdr.Version != ManifestVersion {
 		return nil, fmt.Errorf("%s: версия манифеста %d не поддерживается (нужна %d)",
 			filepath.Join(dir, manifestName), hdr.Version, ManifestVersion)
+	}
+	// Every path handed out by the workspace is absolute, so it means the
+	// same file for the manifest, for external tools and after a chdir.
+	if dir, err = filepath.Abs(dir); err != nil {
+		return nil, fmt.Errorf("книга: %w", err)
 	}
 
 	cfgPath := opts.ConfigPath

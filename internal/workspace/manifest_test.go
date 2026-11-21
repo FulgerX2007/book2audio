@@ -351,3 +351,41 @@ func TestConcurrentMarks(t *testing.T) {
 		t.Errorf("Counts = %+v, want %d units, %d failed", c, n, n/4)
 	}
 }
+
+// TestRelativeWorkdir is a regression test: with the default, relative
+// workdir ("work") the result paths were resolved against the working
+// folder twice.
+func TestRelativeWorkdir(t *testing.T) {
+	tmp := t.TempDir()
+	pdf := writePDF(t, tmp, "book.pdf", "pdf-content")
+	t.Chdir(tmp)
+
+	ws, err := Init("book.pdf", InitOptions{Workdir: "work"})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if !filepath.IsAbs(ws.Dir) || !filepath.IsAbs(ws.PagePath(1)) {
+		t.Errorf("Dir = %q, PagePath = %q; want absolute paths", ws.Dir, ws.PagePath(1))
+	}
+	writeFile(t, ws.PagePath(1), "page text")
+	if err := ws.Manifest.MarkDone("extract", "p0001", Unit{In: "in"}, ws.PagePath(1)); err != nil {
+		t.Fatalf("MarkDone: %v", err)
+	}
+	if u, _ := ws.Manifest.Unit("extract", "p0001"); u.Out != "01-pages/p0001.txt" {
+		t.Errorf("Out = %q, want the path relative to the working folder", u.Out)
+	}
+
+	// Both relative forms of the argument open the same folder.
+	for _, arg := range []string{"book.pdf", filepath.Join("work", "book"), pdf} {
+		got, err := Open(arg, OpenOptions{Workdir: "work"})
+		if err != nil {
+			t.Fatalf("Open(%q): %v", arg, err)
+		}
+		if got.Dir != ws.Dir {
+			t.Errorf("Open(%q).Dir = %q, want %q", arg, got.Dir, ws.Dir)
+		}
+		if need, _ := got.Manifest.NeedsWork("extract", "p0001", "in"); need {
+			t.Errorf("Open(%q): the recorded unit is not found", arg)
+		}
+	}
+}
