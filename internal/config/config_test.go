@@ -178,6 +178,14 @@ func TestValidate(t *testing.T) {
 		{"unknown tts backend", func(c *Config) { c.TTS.Backend = "espeak" }, "tts.backend"},
 		{"empty tts command", func(c *Config) { c.TTS.Command = "" }, "tts.command"},
 		{"tts args without placeholder", func(c *Config) { c.TTS.Args = []string{"--model", "v.onnx"} }, "tts.args"},
+		{"malformed voice", func(c *Config) { c.TTS.Voice = "lessac" }, "tts.voice"},
+		{"voice together with args", func(c *Config) {
+			c.TTS.Voice, c.TTS.Args = "en_US-lessac-medium", []string{"-f", "{out}"}
+		}, "tts.voice"},
+		{"voice for another backend", func(c *Config) {
+			c.TTS.Voice, c.TTS.Backend = "en_US-lessac-medium", BackendSilero
+		}, "tts.voice"},
+		{"voices_url is not a URL", func(c *Config) { c.TTS.VoicesURL = "voices" }, "tts.voices_url"},
 		{"accent args without a command", func(c *Config) { c.TTS.AccentArgs = []string{"--fast"} }, "tts.accent_args"},
 		{"segment_chars too small", func(c *Config) { c.TTS.SegmentChars = 10 }, "tts.segment_chars"},
 		{"no tts workers", func(c *Config) { c.TTS.Workers = 0 }, "tts.workers"},
@@ -348,6 +356,42 @@ func TestSameLanguage(t *testing.T) {
 		}
 		if got := c.TargetPrimary(); got != tt.primary {
 			t.Errorf("TargetPrimary(%q) = %q, want %q", tt.target, got, tt.primary)
+		}
+	}
+}
+
+func TestPiperVoice(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*Config)
+		voice  string
+		auto   bool
+	}{
+		{"default for Russian", func(c *Config) {}, "ru_RU-irina-medium", true},
+		{"default for English", func(c *Config) { c.TargetLang = "en-GB" }, "en_US-lessac-medium", true},
+		{"voice from the config", func(c *Config) { c.TTS.Voice = "en_GB-alan-medium" }, "en_GB-alan-medium", true},
+		{"no default for the language", func(c *Config) { c.TargetLang = "tlh" }, "", false},
+		{"arguments are set", func(c *Config) { c.TTS.Args = []string{"-f", "{out}"} }, "ru_RU-irina-medium", false},
+		{"another backend", func(c *Config) { c.TTS.Backend = BackendSilero }, "ru_RU-irina-medium", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := Default()
+			tt.change(&c)
+			if got := c.PiperVoice(); got != tt.voice {
+				t.Errorf("PiperVoice() = %q, want %q", got, tt.voice)
+			}
+			if got := c.AutoVoice(); got != tt.auto {
+				t.Errorf("AutoVoice() = %v, want %v", got, tt.auto)
+			}
+		})
+	}
+	// Every default voice has a valid name.
+	for lang, voice := range DefaultPiperVoices {
+		c := Default()
+		c.TTS.Voice = voice
+		if err := c.Validate(); err != nil {
+			t.Errorf("default voice of %q: %v", lang, err)
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -510,6 +511,11 @@ func TestExtractCommand(t *testing.T) {
 		Runner:         fake,
 		NewTranslator:  func(config.Translate) (translate.Translator, error) { return tr, nil },
 		NewSynthesizer: func(config.TTS, execx.Runner) (tts.Synthesizer, error) { return syn, nil },
+		// Without engine arguments the voice of the language would be
+		// downloaded: there is none to get in this test.
+		FetchVoice: func(_ context.Context, _, _, voice string, _ *slog.Logger) (string, error) {
+			return "", fmt.Errorf("voice %s: tts.args or a reachable voice repository is needed", voice)
+		},
 	})...)
 
 	if code := app.Run(context.Background(), []string{"init", pdf, "--workdir", workdir}); code != ExitOK {

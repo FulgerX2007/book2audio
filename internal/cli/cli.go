@@ -343,10 +343,12 @@ func setupSynth(deps Deps) func(*flag.FlagSet) RunFunc {
 			}
 			defer ws.Close()
 
-			if err := ws.Config.RequireTTS(); err != nil {
-				return err
+			if !ws.Config.AutoVoice() {
+				if err := ws.Config.RequireTTS(); err != nil {
+					return err
+				}
 			}
-			syn, err := deps.NewSynthesizer(ws.Config.TTS, deps.Runner)
+			syn, err := deps.Synthesizer(ctx, ws, inv.Log)
 			if err != nil {
 				return err
 			}

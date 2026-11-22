@@ -1,6 +1,6 @@
 # Example book2audio config. Every key is optional: the values shown are the
-# defaults. Only translate.model and tts.args have no default; the translate
-# and synth stages need them.
+# defaults. Only translate.model has no default; the translate stage needs it
+# unless source_lang and target_lang are the same.
 #
 #   book2audio init book.pdf --config config.yaml
 #
@@ -53,9 +53,17 @@ translate:
 tts:
   backend: piper
   command: piper
-  # Required for piper: the engine arguments. {out} is replaced with the WAV path.
-  # The segment text is given on standard input as one line.
-  args: ["--model", "voices/ru_RU-irina-medium.onnx", "--output_file", "{out}"]
+  # The engine arguments. {out} is replaced with the WAV path; the segment
+  # text is given on standard input as one line. Example:
+  #   args: ["--model", "voices/ru_RU-irina-medium.onnx", "--output_file", "{out}"]
+  # Empty (piper only): a Piper voice is downloaded when it is missing and the
+  # arguments are built from it.
+  args: []
+  # The Piper voice to download when args is empty, e.g. en_GB-alan-medium.
+  # Empty: the default voice of target_lang (ru, en, de, fr, es).
+  voice: ""
+  voices_dir: ""           # where voices are kept; empty: ~/.cache/book2audio/voices
+  voices_url: https://huggingface.co/rhasspy/piper-voices/resolve/main
   segment_chars: 1200      # a longer paragraph is split by sentences
   workers: 2
   # Optional: an external command that adds stress marks before speech.

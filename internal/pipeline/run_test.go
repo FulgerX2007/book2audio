@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -189,8 +190,9 @@ func TestRunChecksConfigBeforeAnyWork(t *testing.T) {
 		opts   RunOptions
 		want   string
 	}{
-		"no model":            {func(ws *workspace.Workspace) { ws.Config.Translate.Model = "" }, RunOptions{}, "translate.model"},
-		"no engine arguments": {func(ws *workspace.Workspace) { ws.Config.TTS.Args = nil }, RunOptions{}, "tts.args"},
+		"no model": {func(ws *workspace.Workspace) { ws.Config.Translate.Model = "" }, RunOptions{}, "translate.model"},
+		// No arguments and no Piper voice known for the language.
+		"no engine arguments": {func(ws *workspace.Workspace) { ws.Config.TTS.Args, ws.Config.TargetLang = nil, "tlh" }, RunOptions{}, "tts.args"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			ws := emptyBook(t)
@@ -557,5 +559,90 @@ func TestRunSameLanguageSkipsTheModel(t *testing.T) {
 	}
 	if f.syn.Calls() != calls {
 		t.Errorf("synthesizer calls after the second run = %d, want %d", f.syn.Calls(), calls)
+	}
+}
+
+// Without engine arguments the Piper voice of the target language is
+// fetched and the arguments are built from it.
+func TestSynthesizerFetchesTheVoice(t *testing.T) {
+	tests := []struct {
+		name      string
+		change    func(*config.Config)
+		wantVoice string // empty: nothing is fetched
+		wantArgs  []string
+	}{
+		{
+			name:      "default voice of the target language",
+			change:    func(c *config.Config) { c.TTS.Args = nil },
+			wantVoice: "ru_RU-irina-medium",
+			wantArgs:  []string{"--model", "/voices/ru_RU-irina-medium.onnx", "--output_file", "{out}"},
+		},
+		{
+			name: "the voice from the config, kept in tts.voices_dir",
+			change: func(c *config.Config) {
+				c.TTS.Args, c.TTS.Voice, c.TargetLang = nil, "en_GB-alan-medium", "en"
+			},
+			wantVoice: "en_GB-alan-medium",
+			wantArgs:  []string{"--model", "/voices/en_GB-alan-medium.onnx", "--output_file", "{out}"},
+		},
+		{
+			name:     "hand-written arguments are left alone",
+			change:   func(c *config.Config) { c.TTS.Args = []string{"-m", "my.onnx", "-f", "{out}"} },
+			wantArgs: []string{"-m", "my.onnx", "-f", "{out}"},
+		},
+		{
+			name: "another backend fetches nothing",
+			change: func(c *config.Config) {
+				c.TTS.Backend, c.TTS.Args = config.BackendSilero, nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := emptyBook(t)
+			ws.Config.TTS.VoicesDir = "/voices"
+			tt.change(&ws.Config)
+			deps := newFakes().deps()
+			var fetched, gotURL string
+			deps.FetchVoice = func(_ context.Context, baseURL, dir, voice string, _ *slog.Logger) (string, error) {
+				fetched, gotURL = voice, baseURL
+				return dir + "/" + voice + ".onnx", nil
+			}
+			var created config.TTS
+			deps.NewSynthesizer = func(cfg config.TTS, _ execx.Runner) (tts.Synthesizer, error) {
+				created = cfg
+				return &tts.FakeSynthesizer{}, nil
+			}
+
+			if _, err := deps.Synthesizer(context.Background(), ws, quiet); err != nil {
+				t.Fatalf("Synthesizer: %v", err)
+			}
+			if fetched != tt.wantVoice {
+				t.Errorf("fetched voice = %q, want %q", fetched, tt.wantVoice)
+			}
+			if tt.wantVoice != "" && gotURL != config.Default().TTS.VoicesURL {
+				t.Errorf("voice repository = %q", gotURL)
+			}
+			// The engine and the segment hashes see the same arguments.
+			if !slices.Equal(created.Args, tt.wantArgs) || !slices.Equal(ws.Config.TTS.Args, tt.wantArgs) {
+				t.Errorf("args: engine %v, book config %v; want %v", created.Args, ws.Config.TTS.Args, tt.wantArgs)
+			}
+		})
+	}
+}
+
+func TestSynthesizerReportsAVoiceThatCannotBeFetched(t *testing.T) {
+	ws := emptyBook(t)
+	ws.Config.TTS.Args = nil
+	deps := newFakes().deps()
+	deps.FetchVoice = func(context.Context, string, string, string, *slog.Logger) (string, error) {
+		return "", errors.New("no network")
+	}
+	deps.NewSynthesizer = func(config.TTS, execx.Runner) (tts.Synthesizer, error) {
+		t.Error("the engine was created without a voice")
+		return nil, nil
+	}
+	if _, err := deps.Synthesizer(context.Background(), ws, quiet); err == nil || !strings.Contains(err.Error(), "no network") {
+		t.Errorf("Synthesizer error = %v, want the fetch error", err)
 	}
 }

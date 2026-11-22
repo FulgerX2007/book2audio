@@ -15,7 +15,7 @@ It is meant for texts you have the rights to: your own documents and books in th
 - `tesseract-ocr` with the data of the book's language, only for pages without a text layer.
 - `ffmpeg` with the `aac` and `libmp3lame` encoders to build the audiobook.
 - A translation server with an OpenAI-compatible API: local (Ollama, llama.cpp, vLLM) or in the cloud.
-- A speech engine: Silero (`pip install silero scipy`) or Piper with a Russian voice model.
+- A speech engine: Silero (`pip install silero scipy`) or Piper. A Piper voice for the language is downloaded when it is missing.
 
 ## Build
 
@@ -31,7 +31,7 @@ Tests that need external tools skip themselves when the tool is not installed.
 
 ```sh
 cp config.example.yaml config.yaml
-# set translate.model and tts.args in config.yaml
+# set translate.model in config.yaml
 
 book2audio init book.pdf --config config.yaml
 book2audio run book.pdf
@@ -121,6 +121,16 @@ tts:
 ```
 
 The script accepts `--speaker`, `--model`, `--sample-rate` and `--device` (`cpu` or `cuda`). Its first line must name the interpreter of the environment where `silero` is installed; alternatively put the interpreter in `tts.command` and the script path first in `tts.args`.
+
+## Piper voices
+
+With `tts.backend: piper` and no `tts.args`, the synth stage gets the voice itself:
+
+- the voice is `tts.voice`, or the default one for `target_lang`: `ru`, `en`, `de`, `fr` and `es` have a default; for any other language set `tts.voice` to a name from the [Piper voice list](https://huggingface.co/rhasspy/piper-voices), for example `it_IT-paola-medium`;
+- its two files (`.onnx` and `.onnx.json`, about 60 MB) are downloaded once into `~/.cache/book2audio/voices` (or `tts.voices_dir`) and reused by every book;
+- the engine arguments are built from the downloaded model.
+
+Hand-written `tts.args` always win: nothing is downloaded when they are set. Only voice files are downloaded; the programs themselves (`piper`, `ffmpeg`, `tesseract` and its language data) are installed by you.
 
 ## Stress marks
 

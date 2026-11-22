@@ -100,6 +100,46 @@ type TTS struct {
 	// line on standard input and must print the same number of lines.
 	AccentCommand string   `yaml:"accent_command"`
 	AccentArgs    []string `yaml:"accent_args"`
+
+	// Voice names a Piper voice such as "en_US-lessac-medium". It is used
+	// when Args is empty: the voice files are downloaded when they are
+	// missing and the engine arguments are built from them. Empty: the
+	// default voice of target_lang, see DefaultPiperVoices.
+	Voice string `yaml:"voice"`
+	// VoicesDir is where downloaded voices are kept. Empty: the user cache
+	// directory, shared by all books.
+	VoicesDir string `yaml:"voices_dir"`
+	// VoicesURL is the root of the voice repository.
+	VoicesURL string `yaml:"voices_url"`
+}
+
+// DefaultPiperVoices maps a primary language subtag to the Piper voice that
+// is downloaded when tts.voice is not set.
+var DefaultPiperVoices = map[string]string{
+	"ru": "ru_RU-irina-medium",
+	"en": "en_US-lessac-medium",
+	"de": "de_DE-thorsten-medium",
+	"fr": "fr_FR-siwis-medium",
+	"es": "es_ES-davefx-medium",
+}
+
+// piperVoiceRe is the form of a Piper voice name: locale, name, quality.
+var piperVoiceRe = regexp.MustCompile(`^[a-z]{2,3}_[A-Z]{2}-[A-Za-z0-9_]+-(x_low|low|medium|high)$`)
+
+// PiperVoice returns the Piper voice to download: tts.voice, or the default
+// voice of target_lang. It is empty when neither is known.
+func (c Config) PiperVoice() string {
+	if voice := strings.TrimSpace(c.TTS.Voice); voice != "" {
+		return voice
+	}
+	return DefaultPiperVoices[c.TargetPrimary()]
+}
+
+// AutoVoice reports whether the engine arguments are built from a
+// downloaded voice: the backend is Piper, tts.args is empty and a voice is
+// known.
+func (c Config) AutoVoice() bool {
+	return c.TTS.Backend == BackendPiper && len(c.TTS.Args) == 0 && c.PiperVoice() != ""
 }
 
 // Audio configures the final assembly.
@@ -142,6 +182,7 @@ func Default() Config {
 			Command:      "piper",
 			SegmentChars: 1200,
 			Workers:      2,
+			VoicesURL:    "https://huggingface.co/rhasspy/piper-voices/resolve/main",
 		},
 		Audio: Audio{
 			Format:           FormatM4B,
@@ -291,6 +332,19 @@ func (c Config) Validate() error {
 	if c.TTS.Backend == BackendPiper && len(c.TTS.Args) > 0 && !c.TTS.hasOutPlaceholder() {
 		p.addf("tts.args", "has no %s placeholder for the output file path", OutPlaceholder)
 	}
+	if voice := strings.TrimSpace(c.TTS.Voice); voice != "" {
+		switch {
+		case !piperVoiceRe.MatchString(voice):
+			p.addf("tts.voice", "must look like en_US-lessac-medium, got %q", voice)
+		case c.TTS.Backend != BackendPiper:
+			p.addf("tts.voice", "is used only by the %s backend", BackendPiper)
+		case len(c.TTS.Args) > 0:
+			p.addf("tts.voice", "is used only when tts.args is empty; remove one of them")
+		}
+	}
+	if u, err := url.Parse(c.TTS.VoicesURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		p.addf("tts.voices_url", "must be a URL like http(s)://host[/path], got %q", c.TTS.VoicesURL)
+	}
 	if len(c.TTS.AccentArgs) > 0 && strings.TrimSpace(c.TTS.AccentCommand) == "" {
 		p.addf("tts.accent_args", "arguments are set but tts.accent_command is not")
 	}
@@ -332,7 +386,7 @@ func (c Config) RequireTTS() error {
 	// Only a command run per segment is told the output path in its
 	// arguments; the Silero script gets it on standard input.
 	if c.TTS.Backend == BackendPiper && !c.TTS.hasOutPlaceholder() {
-		p.addf("tts.args", "needs the engine arguments with the %s placeholder for the output file path", OutPlaceholder)
+		p.addf("tts.args", "needs the engine arguments with the %s placeholder for the output file path, or set tts.voice to a Piper voice to download", OutPlaceholder)
 	}
 	return p.err()
 }

@@ -29,11 +29,40 @@ type Deps struct {
 	NewTranslator func(cfg config.Translate) (translate.Translator, error)
 	// NewSynthesizer creates the speech backend of a book.
 	NewSynthesizer func(cfg config.TTS, runner execx.Runner) (tts.Synthesizer, error)
+	// FetchVoice makes a Piper voice available locally; nil means
+	// tts.EnsureVoice, which downloads it.
+	FetchVoice tts.VoiceFetcher
 }
 
 // DefaultDeps returns the real dependencies: processes and network.
 func DefaultDeps() Deps {
 	return Deps{Runner: execx.OSRunner{}, NewTranslator: translate.New, NewSynthesizer: tts.New}
+}
+
+// Synthesizer returns the speech backend of a book. When the engine
+// arguments are to be built from a Piper voice (Config.AutoVoice), the voice
+// is downloaded if it is missing and the arguments are written into
+// ws.Config, so that they enter the segment hashes like hand-written ones.
+func (d Deps) Synthesizer(ctx context.Context, ws *workspace.Workspace, log *slog.Logger) (tts.Synthesizer, error) {
+	if ws.Config.AutoVoice() {
+		dir := ws.Config.TTS.VoicesDir
+		if dir == "" {
+			var err error
+			if dir, err = tts.DefaultVoicesDir(); err != nil {
+				return nil, err
+			}
+		}
+		fetch := d.FetchVoice
+		if fetch == nil {
+			fetch = tts.EnsureVoice
+		}
+		model, err := fetch(ctx, ws.Config.TTS.VoicesURL, dir, ws.Config.PiperVoice(), log)
+		if err != nil {
+			return nil, err
+		}
+		ws.Config.TTS.Args = []string{"--model", model, "--output_file", config.OutPlaceholder}
+	}
+	return d.NewSynthesizer(ws.Config.TTS, d.Runner)
 }
 
 // Translator returns the translator of a book: the configured backend, or a
@@ -66,7 +95,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, deps Deps, log *slog.Logg
 			return err
 		}
 	}
-	if slices.Contains(stages, StageSynth) {
+	if slices.Contains(stages, StageSynth) && !ws.Config.AutoVoice() {
 		if err := ws.Config.RequireTTS(); err != nil {
 			return err
 		}
@@ -131,7 +160,7 @@ func runStage(ctx context.Context, ws *workspace.Workspace, deps Deps, log *slog
 		return fmt.Sprintf("%d chunks, %d translated now, %d failed, %d chapters assembled, %d kept with hand edits",
 			res.Chunks, res.Translated, res.Failed, res.Assembled, res.Kept), err
 	case StageSynth:
-		syn, err := deps.NewSynthesizer(ws.Config.TTS, deps.Runner)
+		syn, err := deps.Synthesizer(ctx, ws, log)
 		if err != nil {
 			return "", err
 		}
