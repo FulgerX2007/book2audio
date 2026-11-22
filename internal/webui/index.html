@@ -3,152 +3,193 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>book2audio</title>
 <style>
   :root {
-    --bg: #f6f5f1; --panel: #ffffff; --ink: #1f2328; --muted: #6b7280; --line: #e3e1da;
-    --accent: #2f6f5e; --accent-ink: #ffffff; --bad: #b3261e; --warn: #9a6700; --bar: #e9e7e0;
-    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #15171a; --panel: #1e2125; --ink: #e6e6e6; --muted: #9aa0a6; --line: #30343a;
-            --accent: #5fb49c; --accent-ink: #10201b; --bad: #f2867d; --warn: #e3b341; --bar: #2b2f35; }
+    --bg: #0F1214; --side: #14181B; --panel: #171B1F; --raised: #1F252A; --well: #0A0C0E;
+    --line: #262C32; --line2: #323A42; --dash: #4A545E;
+    --ink: #E6E8EA; --soft: #C9CED3; --muted: #9AA3AB; --idle: #5F6B76;
+    --accent: #6FD3A8; --accent-bg: #1B2320; --warn: #E8B34B; --bad: #FF8A7A; --bad-bg: #1F1716; --bad-line: #5A3A36;
+    --sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
-  header { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
-  header h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
-  header span { color: var(--muted); font-size: 13px; }
-  main { display: grid; grid-template-columns: 300px 1fr; gap: 20px; padding: 20px; max-width: 1300px; margin: 0 auto; }
-  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 10px; }
-  h3 { font-size: 20px; margin: 0 0 2px; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); }
+  .app { min-height: 100vh; display: flex; flex-wrap: wrap; align-items: stretch; }
+  .mono { font-family: var(--mono); }
   .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  ul.books { list-style: none; margin: 0 0 14px; padding: 0; }
-  ul.books li { padding: 9px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
-  ul.books li:hover { border-color: var(--line); }
-  ul.books li.sel { background: var(--bar); }
-  ul.books .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; animation: pulse 1.2s infinite; }
-  @keyframes pulse { 50% { opacity: .25; } }
-  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
-  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 3px; }
-  input[type=text], input[type=file], select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); font: inherit; }
-  button { padding: 8px 14px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
-  button:disabled { opacity: .5; cursor: default; }
-  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
-  .row > div { min-width: 130px; }
-  .check { display: flex; align-items: center; gap: 6px; color: var(--ink); margin: 0; }
-  .check input { width: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
-  td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  tr:last-child td { border-bottom: 0; }
-  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .bar { height: 8px; background: var(--bar); border-radius: 4px; overflow: hidden; min-width: 90px; display: flex; }
-  .bar i { display: block; height: 100%; background: var(--accent); }
-  .bar i.f { background: var(--bad); }
-  .bad { color: var(--bad); }
   .ok { color: var(--accent); }
-  section { margin-top: 18px; }
-  pre.log { background: var(--bar); border-radius: 8px; padding: 10px 12px; font: 12px/1.5 var(--mono); max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0; }
-  code { font: 13px var(--mono); word-break: break-all; }
-  .banner { padding: 9px 12px; border-radius: 8px; margin: 12px 0 0; font-size: 14px; border: 1px solid var(--line); }
-  .banner.bad { border-color: var(--bad); }
-  .scroll { overflow-x: auto; }
+  .bad { color: var(--bad); }
+  .warn { color: var(--warn); }
+  .label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+  [hidden] { display: none !important; }
+
+  nav { flex: 1 1 250px; padding: 20px 16px; background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 18px; }
+  .brand { display: flex; align-items: center; gap: 10px; font: 500 15px var(--mono); letter-spacing: .2px; }
+  .books { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .books button { display: block; width: 100%; text-align: left; padding: 10px 12px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+  .books button:hover { border-color: var(--line2); }
+  .books button.sel { background: var(--raised); border-color: var(--line2); }
+  .books .t { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .books .t span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .books .s { font: 12px var(--mono); color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--idle); flex: none; }
+  .dot.run { background: var(--accent); animation: pulse 1.2s infinite; }
+  .dot.fail { background: var(--bad); }
+  .dot.done { background: var(--accent); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) { .dot.run { animation: none; } }
+  nav .foot { margin-top: auto; font: 12px var(--mono); color: var(--muted); word-break: break-all; }
+
+  button, select, input { font: inherit; }
+  .btn { min-height: 44px; padding: 0 18px; border-radius: 6px; border: 1px solid var(--dash); background: transparent; color: var(--ink); font-weight: 600; cursor: pointer; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.primary { border: 0; background: var(--accent); color: var(--bg); padding: 0 22px; }
+  .btn.stop { border-color: var(--bad); color: var(--bad); }
+  .btn.dashed { border-style: dashed; font-weight: 500; width: 100%; }
+  select, input[type=text], input[type=file] { min-height: 44px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line2); background: var(--panel); color: var(--ink); }
+  input[type=text], input[type=file] { width: 100%; }
+  input[type=file] { padding: 9px 10px; }
+  #add { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 6px; border: 1px solid var(--line2); background: var(--panel); }
+  #add label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  main { flex: 999 1 560px; min-width: 0; padding: 24px 28px; display: flex; flex-direction: column; gap: 22px; }
+  header { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; justify-content: space-between; }
+  h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -.2px; }
+  .meta { font: 12px var(--mono); color: var(--muted); margin-top: 6px; word-break: break-all; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .controls label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .controls label.check { color: var(--soft); min-height: 44px; }
+
+  .banner { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
+  .banner.bad { border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad); }
+
+  .stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .tile { padding: 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); }
+  .tile.run { background: var(--accent-bg); border-color: var(--accent); }
+  .tile.run .label { color: var(--accent); }
+  .tile.fail { border-color: var(--bad-line); }
+  .tile .n { font: 20px var(--mono); margin-top: 6px; }
+  .tile .n small { color: var(--muted); font-size: 13px; }
+  .bar { height: 4px; border-radius: 2px; background: var(--line); margin-top: 10px; display: flex; overflow: hidden; }
+  .bar i { display: block; height: 4px; background: var(--accent); }
+  .bar i.f { background: var(--bad); }
+
+  .card { border-radius: 8px; background: var(--panel); border: 1px solid var(--line); overflow-x: auto; }
+  table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 12px 14px; font-weight: 500; border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--line); font-family: var(--mono); }
+  td.title { font-family: var(--sans); }
+  tr:last-child td { border-bottom: 0; }
+  tr.run td { background: var(--accent-bg); }
+
+  .fails { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--bad-line); background: var(--bad-bg); display: flex; flex-direction: column; gap: 12px; }
+  .fails .head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  .fails .head strong { color: var(--bad); font-weight: 600; }
+  .fails ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow: auto; }
+  .fails li { font: 12px var(--mono); color: var(--soft); word-break: break-word; }
+  .fails li b { color: var(--ink); font-weight: 500; }
+  .fails li .out { color: var(--muted); }
+
+  pre.log { margin: 8px 0 0; padding: 14px 16px; border-radius: 8px; background: var(--well); border: 1px solid var(--line); font: 12px/1.7 var(--mono); color: var(--soft); white-space: pre-wrap; word-break: break-word; max-height: 340px; overflow: auto; }
+  pre.log .w { color: var(--bad); }
+  .files { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font: 12px var(--mono); color: var(--soft); word-break: break-all; }
   a { color: var(--accent); }
+  a:hover { color: #9BE5C6; }
+  .out a { font: 500 14px var(--mono); }
+  .empty { color: var(--muted); padding: 40px 0; }
 </style>
 </head>
 <body>
-<header>
-  <h1>book2audio</h1>
-  <span>PDF to audiobook</span>
-</header>
-<main>
-  <aside>
-    <div class="panel">
-      <h2>Books</h2>
+<div class="app">
+  <nav aria-label="Books">
+    <div class="brand">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6FD3A8" stroke-width="2" stroke-linecap="round"><path d="M4 9v6M8 5v14M12 8v8M16 4v16M20 10v4"/></svg>
+      book2audio
+    </div>
+    <div>
+      <div class="label" id="count">Books</div>
       <ul class="books" id="books"></ul>
-      <p class="muted small" id="nobooks" hidden>No books yet. Add a PDF below.</p>
+      <p class="muted" id="nobooks" hidden>No books yet.</p>
     </div>
-    <div class="panel" style="margin-top:20px">
-      <h2>Add a book</h2>
-      <form id="add">
-        <label for="file">PDF file</label>
-        <input type="file" id="file" accept="application/pdf,.pdf">
-        <label for="path">or its path on this computer</label>
-        <input type="text" id="path" placeholder="/home/me/books/book.pdf" autocomplete="off">
-        <label for="slug">Folder name (optional)</label>
-        <input type="text" id="slug" placeholder="from the file name" autocomplete="off">
-        <div style="margin-top:12px"><button class="primary" id="addbtn">Add</button></div>
-        <p class="small bad" id="adderr" hidden></p>
-      </form>
-    </div>
-  </aside>
+    <button type="button" class="btn dashed" id="addtoggle" aria-expanded="false" aria-controls="add">+ Add a PDF</button>
+    <form id="add" hidden>
+      <label>PDF file <input type="file" id="file" accept="application/pdf,.pdf"></label>
+      <label>or its path on this computer <input type="text" id="path" placeholder="/home/me/books/book.pdf" autocomplete="off"></label>
+      <label>Folder name (optional) <input type="text" id="slug" placeholder="from the file name" autocomplete="off"></label>
+      <button class="btn primary" id="addbtn">Add</button>
+      <div class="bad" id="adderr" role="alert" hidden></div>
+    </form>
+    <div class="foot" id="foot"></div>
+  </nav>
 
-  <div class="panel" id="detail">
-    <p class="muted" id="empty">Select a book to see its progress.</p>
-    <div id="book" hidden>
-      <h3 id="title"></h3>
-      <div class="muted small" id="meta"></div>
-
-      <section>
-        <div class="row">
-          <div><label for="from">From stage</label><select id="from"></select></div>
-          <div><label for="to">To stage</label><select id="to"></select></div>
-          <div><label class="check" title="Rebuild files that were edited by hand"><input type="checkbox" id="force"> Overwrite hand edits</label></div>
-          <div><button class="primary" id="run">Run</button> <button id="stop">Stop</button></div>
+  <main>
+    <p class="empty" id="empty">Select a book, or add a PDF.</p>
+    <div id="book" hidden style="display: flex; flex-direction: column; gap: 22px">
+      <header>
+        <div style="min-width: 0">
+          <h1 id="title"></h1>
+          <div class="meta" id="meta"></div>
         </div>
-        <div class="banner" id="state" hidden></div>
+        <div class="controls">
+          <label>from <select id="from"></select></label>
+          <label>to <select id="to"></select></label>
+          <label class="check" title="Rebuild files that were edited by hand"><input type="checkbox" id="force"> overwrite hand edits</label>
+          <button type="button" class="btn stop" id="stop">Stop</button>
+          <button type="button" class="btn primary" id="run">Run</button>
+        </div>
+      </header>
+
+      <div class="banner" id="state" role="status" hidden></div>
+
+      <section class="stages" id="stages" aria-label="Stages"></section>
+
+      <section id="outsec" class="out" hidden>
+        <div class="label">Audiobook</div>
+        <div class="files" id="outputs"></div>
       </section>
 
-      <section>
-        <h2>Stages</h2>
-        <div class="scroll"><table><thead><tr><th>Stage</th><th>Units</th><th>Done</th><th>Failed</th><th style="width:35%">Progress</th></tr></thead><tbody id="stages"></tbody></table></div>
+      <section class="card" id="chsec" aria-label="Chapters" hidden>
+        <table>
+          <thead><tr><th>#</th><th>Chapter</th><th>Translation</th><th>Speech</th><th>Audio</th></tr></thead>
+          <tbody id="chapters"></tbody>
+        </table>
       </section>
 
-      <section id="outsec" hidden>
-        <h2>Audiobook</h2>
-        <div id="outputs"></div>
-      </section>
-
-      <section id="chsec" hidden>
-        <h2>Chapters</h2>
-        <div class="scroll"><table><thead><tr><th>No</th><th>Title</th><th>Translation</th><th>Speech</th><th>Audio</th></tr></thead><tbody id="chapters"></tbody></table></div>
-      </section>
-
-      <section id="failsec" hidden>
-        <h2>Failures</h2>
-        <div class="scroll"><table><thead><tr><th>Stage</th><th>Chapter</th><th>Error</th></tr></thead><tbody id="failures"></tbody></table></div>
+      <section class="fails" id="failsec" aria-label="Failures" hidden>
+        <div class="head">
+          <strong id="failhead"></strong>
+          <button type="button" class="btn" id="retry">Retry failed</button>
+        </div>
+        <ul id="failures"></ul>
       </section>
 
       <section id="editsec" hidden>
-        <h2>Edited by hand</h2>
-        <p class="muted small">These files are not overwritten unless "Overwrite hand edits" is checked.</p>
-        <div id="edited" class="small"></div>
+        <div class="label">Edited by hand · kept unless "overwrite hand edits" is checked</div>
+        <div class="files" id="edited"></div>
       </section>
 
-      <section id="logsec" hidden>
-        <h2>Log of the last run</h2>
+      <section id="logsec" aria-label="Log" hidden>
+        <div class="label">Log</div>
         <pre class="log" id="log"></pre>
       </section>
 
-      <section>
-        <p class="muted small">Settings of this book: <code id="cfg"></code></p>
-      </section>
+      <div class="meta">settings: <span id="cfg"></span></div>
     </div>
-  </div>
-</main>
+  </main>
+</div>
 
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
 const HEADER = {"X-Book2audio": "1"};
-let selected = location.hash.slice(1) || "";
-let stagesFilled = false;
+let selected = decodeURIComponent(location.hash.slice(1)) || "";
+// Short unit names for the stage tiles.
+const UNITS = {extract: "pages", chapters: "files", translate: "chunks", synth: "segments", build: "files"};
+let stagesFor = "";      // the book whose stage lists fill the selects
+let retryFrom = "";      // the stage "Retry failed" starts from
 
 function el(tag, text, cls) {
   const e = document.createElement(tag);
@@ -165,53 +206,75 @@ async function api(path, options) {
   return body;
 }
 
-function bar(done, failed, total) {
-  const b = el("div", null, "bar");
-  if (total > 0) {
-    const d = el("i"); d.style.width = (100 * done / total) + "%"; b.append(d);
-    if (failed > 0) { const f = el("i", null, "f"); f.style.width = (100 * failed / total) + "%"; b.append(f); }
-  }
-  return b;
+function showError(message) {
+  const s = $("state");
+  s.hidden = false; s.className = "banner bad"; s.textContent = message;
 }
 
-function progressCell(done, total, failed, complete) {
-  const td = el("td", null, "num");
-  if (total === 0) { td.textContent = complete ? "done" : "—"; if (complete) td.className = "num ok"; return td; }
-  td.textContent = done + "/" + total + (complete && failed === 0 ? " ✓" : "");
-  if (failed > 0) td.append(el("span", ", failed " + failed, "bad"));
-  else if (complete) td.className = "num ok";
-  return td;
+// The stage a running job is working on: the first one in its range that
+// is not finished yet.
+function activeStage(d) {
+  if (!d.job || !d.job.running) return "";
+  const names = d.allStages;
+  let from = names.indexOf(d.job.from), to = names.indexOf(d.job.to);
+  if (from < 0) from = 0;
+  if (to < 0) to = names.length - 1;
+  const byName = Object.fromEntries(d.stages.map(s => [s.name, s]));
+  for (let i = from; i <= to; i++) {
+    const s = byName[names[i]];
+    if (!s || s.total === 0 || s.done < s.total) return names[i];
+  }
+  return names[to];
 }
 
 async function loadBooks() {
   let books;
   try { books = await api("/api/books"); } catch (e) { return; }
+  $("count").textContent = "Books · " + books.length;
+  $("nobooks").hidden = books.length > 0;
   const ul = $("books");
   ul.replaceChildren();
-  $("nobooks").hidden = books.length > 0;
   for (const b of books) {
-    const li = el("li");
-    if (b.slug === selected) li.className = "sel";
+    let done = 0, total = 0, failed = 0, last = "";
+    for (const s of b.stages) { done += s.done; total += s.total; failed += s.failed; if (s.total > 0) last = s.name; }
+    const btn = el("button"); btn.type = "button";
+    if (b.slug === selected) { btn.className = "sel"; btn.setAttribute("aria-current", "true"); }
     const t = el("div", null, "t");
-    if (b.running) t.append(el("span", null, "dot"));
-    t.append(document.createTextNode(b.title || b.slug));
-    li.append(t);
-    let done = 0, total = 0, failed = 0;
-    for (const s of b.stages) { done += s.done; total += s.total; failed += s.failed; }
-    const sub = el("div", b.error ? b.error : b.slug + (total ? " · " + done + "/" + total + " units" : ""), "muted small");
-    if (b.error || failed) sub.className = "small bad";
-    if (failed && !b.error) sub.textContent += " · " + failed + " failed";
-    li.append(sub);
-    li.onclick = () => select(b.slug);
-    ul.append(li);
+    const build = b.stages.find(s => s.name === "build");
+    const finished = build && build.total > 0 && build.done === build.total;
+    t.append(el("span", null, "dot" + (b.running ? " run" : (b.error || failed) ? " fail" : finished ? " done" : "")));
+    t.append(el("span", b.title || b.slug));
+    const s = el("div", null, "s");
+    if (b.error) { s.textContent = b.error; s.className = "s bad"; }
+    else if (failed) { s.textContent = last + " · " + failed + " failed"; s.className = "s bad"; }
+    else if (finished) s.textContent = "done";
+    else if (total) s.textContent = (b.running ? "running · " : "") + last + " · " + done + "/" + total;
+    else s.textContent = "not started";
+    btn.append(t, s);
+    btn.onclick = () => select(b.slug);
+    const li = el("li"); li.append(btn); ul.append(li);
   }
 }
 
 function select(slug) {
   selected = slug;
-  location.hash = slug;
-  stagesFilled = false;
+  location.hash = encodeURIComponent(slug);
   refresh();
+}
+
+function countCell(done, total, failed, complete, running) {
+  const td = el("td");
+  if (total === 0) {
+    td.textContent = complete ? "ok" : "—";
+    td.className = complete ? "ok" : "muted";
+    return td;
+  }
+  td.textContent = done + "/" + total;
+  if (failed > 0) td.append(el("span", " " + failed + " failed", "bad"));
+  else if (complete || done === total) { td.textContent += " ok"; td.className = "ok"; }
+  else if (running && done > 0) { td.textContent += " running"; td.className = "warn"; }
+  else if (done === 0) td.className = "muted";
+  return td;
 }
 
 async function loadDetail() {
@@ -225,99 +288,133 @@ async function loadDetail() {
   const meta = [];
   if (d.author) meta.push(d.author);
   if (d.pages) meta.push(d.pages + " pages");
-  meta.push(d.sourceLang + " → " + d.targetLang);
-  meta.push(d.dir);
+  meta.push(d.sourceLang + " → " + d.targetLang, d.dir);
   $("meta").textContent = meta.join(" · ");
   $("cfg").textContent = d.configPath;
 
-  if (!stagesFilled) {
+  if (stagesFor !== d.slug) {
     for (const id of ["from", "to"]) {
       const sel = $(id); sel.replaceChildren();
-      const first = el("option", id === "from" ? "the first stage" : "the last stage"); first.value = ""; sel.append(first);
+      const first = el("option", id === "from" ? "first stage" : "last stage"); first.value = ""; sel.append(first);
       for (const s of d.allStages) { const o = el("option", s); o.value = s; sel.append(o); }
     }
-    stagesFilled = true;
+    stagesFor = d.slug;
   }
 
-  const running = d.job && d.job.running;
-  $("run").disabled = running; $("stop").disabled = !running;
+  const running = !!(d.job && d.job.running);
+  const active = activeStage(d);
+  $("run").disabled = running; $("stop").disabled = !running; $("retry").disabled = running;
+
   const state = $("state");
-  state.className = "banner"; state.hidden = !d.job;
-  if (d.job) {
+  state.className = "banner"; state.hidden = !d.job || running;
+  if (d.job && !running) {
     const range = (d.job.from || d.allStages[0]) + " → " + (d.job.to || d.allStages[d.allStages.length - 1]);
-    if (running) { state.replaceChildren(el("span", null, "dot"), document.createTextNode("Running " + range)); }
-    else if (d.job.stopped) state.textContent = "Stopped. Run again to continue: finished work is kept.";
+    if (d.job.stopped) state.textContent = "Stopped. Run again to continue: finished work is kept.";
     else if (d.job.error) { state.textContent = "The last run ended with an error: " + d.job.error; state.className = "banner bad"; }
     else state.textContent = "The last run finished (" + range + ").";
   }
 
-  const stages = $("stages"); stages.replaceChildren();
-  for (const s of d.stages) {
-    const tr = el("tr");
-    tr.append(el("td", s.name), el("td", s.units, "muted"), el("td", s.done + "/" + s.total, "num"),
-      el("td", String(s.failed), s.failed ? "num bad" : "num"));
-    const td = el("td"); td.append(bar(s.done, s.failed, s.total)); tr.append(td);
-    stages.append(tr);
-  }
+  // One tile per pipeline stage, in order.
+  const byName = Object.fromEntries(d.stages.map(s => [s.name, s]));
+  const tiles = $("stages"); tiles.replaceChildren();
+  d.allStages.forEach((name, i) => {
+    const s = byName[name] || {total: 0, done: 0, failed: 0, units: ""};
+    const isRun = name === active;
+    const tile = el("div", null, "tile" + (isRun ? " run" : s.failed ? " fail" : ""));
+    tile.append(el("div", (i + 1) + " · " + name + (isRun ? " · running" : ""), "label"));
+    const n = el("div", null, "n");
+    if (s.total === 0) { n.textContent = isRun ? "starting" : "waiting"; n.classList.add("muted"); }
+    else { n.textContent = String(s.done); n.append(el("small", " /" + s.total + " " + (UNITS[name] || s.units))); }
+    tile.append(n);
+    if (s.failed) tile.append(el("div", s.failed + " failed", "bad mono"));
+    const bar = el("div", null, "bar");
+    if (s.total > 0) {
+      const done = el("i"); done.style.width = (100 * s.done / s.total) + "%"; bar.append(done);
+      if (s.failed) { const f = el("i", null, "f"); f.style.width = Math.max(1, 100 * s.failed / s.total) + "%"; bar.append(f); }
+    }
+    tile.append(bar);
+    tiles.append(tile);
+  });
 
   $("outsec").hidden = d.outputs.length === 0;
   const outs = $("outputs"); outs.replaceChildren();
   for (const name of d.outputs) {
-    const p = el("div");
     const a = el("a", name); a.href = "/api/books/" + encodeURIComponent(d.slug) + "/out/" + encodeURIComponent(name);
-    p.append(a); outs.append(p);
+    const p = el("div"); p.append(a); outs.append(p);
   }
 
   $("chsec").hidden = d.chapters.length === 0;
   const chs = $("chapters"); chs.replaceChildren();
   for (const c of d.chapters) {
-    const tr = el("tr");
-    tr.append(el("td", String(c.n), "num"), el("td", c.title),
-      progressCell(c.chunksDone, c.chunks, c.chunksFailed, c.translated),
-      progressCell(c.segmentsDone, c.segments, c.segmentsFailed, c.segments > 0 && c.segmentsDone === c.segments),
-      el("td", c.audio ? "✓" : "—", c.audio ? "ok" : "muted"));
+    const translating = active === "translate" && c.chunks > 0 && c.chunksDone < c.chunks;
+    const voicing = active === "synth" && c.segments > 0 && c.segmentsDone > 0 && c.segmentsDone < c.segments;
+    const tr = el("tr"); if ((translating && c.chunksDone > 0) || voicing) tr.className = "run";
+    tr.append(el("td", String(c.n).padStart(2, "0"), "muted"), el("td", c.title, "title"),
+      countCell(c.chunksDone, c.chunks, c.chunksFailed, c.translated, translating),
+      countCell(c.segmentsDone, c.segments, c.segmentsFailed, false, voicing),
+      el("td", c.audio ? "ok" : "—", c.audio ? "ok" : "muted"));
     chs.append(tr);
   }
 
   $("failsec").hidden = d.failures.length === 0;
-  const fails = $("failures"); fails.replaceChildren();
-  for (const f of d.failures) {
-    const tr = el("tr");
-    const td = el("td", f.error);
-    if (f.out) { td.append(el("div", "a result can be supplied by hand at:", "muted small")); td.append(el("code", f.out)); }
-    tr.append(el("td", f.stage), el("td", f.chapter || "—"), td);
-    fails.append(tr);
+  if (d.failures.length) {
+    $("failhead").textContent = d.failures.length + (d.failures.length === 1 ? " unit failed" : " units failed");
+    // A retry starts at the earliest stage that has a failure.
+    const order = d.allStages;
+    const stageOf = f => f.stage === "translated" ? "translate" : f.stage;
+    retryFrom = d.failures.map(stageOf).filter(s => order.includes(s)).sort((a, b) => order.indexOf(a) - order.indexOf(b))[0] || "";
+    const list = $("failures"); list.replaceChildren();
+    for (const f of d.failures) {
+      const li = el("li");
+      li.append(el("b", f.stage + (f.chapter ? " · " + f.chapter : "")), document.createTextNode("  " + f.error));
+      if (f.out) li.append(el("div", "a result can be supplied by hand at: " + f.out, "out"));
+      list.append(li);
+    }
   }
 
   $("editsec").hidden = d.edited.length === 0;
   const ed = $("edited"); ed.replaceChildren();
-  for (const path of d.edited) { const p = el("div"); p.append(el("code", path)); ed.append(p); }
+  for (const path of d.edited) ed.append(el("div", path));
 
   const log = $("log");
   $("logsec").hidden = !d.job || d.job.log.length === 0;
   if (d.job) {
     const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
-    log.textContent = d.job.log.join("\n");
+    log.replaceChildren();
+    for (const line of d.job.log) {
+      log.append(/level=(WARN|ERROR)/.test(line) ? el("span", line, "w") : document.createTextNode(line), document.createTextNode("\n"));
+    }
     if (atEnd) log.scrollTop = log.scrollHeight;
   }
 }
 
 async function refresh() { await Promise.all([loadBooks(), loadDetail()]); }
 
-$("run").onclick = async () => {
+async function startRun(from, to, force) {
   try {
     await api("/api/books/" + encodeURIComponent(selected) + "/run", {
       method: "POST", headers: {...HEADER, "Content-Type": "application/json"},
-      body: JSON.stringify({from: $("from").value, to: $("to").value, force: $("force").checked}),
+      body: JSON.stringify({from, to, force}),
     });
     $("force").checked = false;
-  } catch (e) { const s = $("state"); s.hidden = false; s.className = "banner bad"; s.textContent = e.message; return; }
+  } catch (e) { showError(e.message); return; }
+  refresh();
+}
+
+$("run").onclick = () => startRun($("from").value, $("to").value, $("force").checked);
+$("retry").onclick = () => startRun(retryFrom, "", false);
+
+$("stop").onclick = async () => {
+  try { await api("/api/books/" + encodeURIComponent(selected) + "/stop", {method: "POST", headers: HEADER}); }
+  catch (e) { showError(e.message); }
   refresh();
 };
 
-$("stop").onclick = async () => {
-  try { await api("/api/books/" + encodeURIComponent(selected) + "/stop", {method: "POST", headers: HEADER}); } catch (e) { /* shown by the next refresh */ }
-  refresh();
+$("addtoggle").onclick = () => {
+  const form = $("add");
+  form.hidden = !form.hidden;
+  $("addtoggle").setAttribute("aria-expanded", String(!form.hidden));
+  if (!form.hidden) $("file").focus();
 };
 
 $("add").onsubmit = async ev => {
@@ -330,12 +427,13 @@ $("add").onsubmit = async ev => {
   $("addbtn").disabled = true;
   try {
     const res = await api("/api/books", {method: "POST", headers: HEADER, body: form});
-    $("add").reset();
+    $("add").reset(); $("add").hidden = true; $("addtoggle").setAttribute("aria-expanded", "false");
     select(res.slug);
   } catch (e) { err.textContent = e.message; err.hidden = false; }
   $("addbtn").disabled = false;
 };
 
+$("foot").textContent = location.host;
 refresh();
 setInterval(refresh, 2000);
 </script>
