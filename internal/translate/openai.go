@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/FulgerX2007/book2audio/internal/config"
@@ -37,7 +39,11 @@ type OpenAI struct {
 	temperature float64
 	maxRetries  int
 	headers     map[string]string // extra request headers from translate.headers
-	client      *http.Client
+	log         *slog.Logger
+
+	// noTemperature is set once the server rejects the temperature parameter.
+	noTemperature atomic.Bool
+	client        *http.Client
 
 	// backoff is the pause before retry number attempt (1-based);
 	// tests replace it.
@@ -63,6 +69,7 @@ func NewOpenAI(cfg config.Translate) (*OpenAI, error) {
 		temperature: cfg.Temperature,
 		maxRetries:  cfg.MaxRetries,
 		headers:     cfg.Headers,
+		log:         slog.Default(),
 		client:      &http.Client{Timeout: requestTimeout},
 		backoff: func(attempt int) time.Duration {
 			return min(time.Second<<(attempt-1), maxBackoff)
@@ -73,7 +80,7 @@ func NewOpenAI(cfg config.Translate) (*OpenAI, error) {
 type chatRequest struct {
 	Model       string    `json:"model"`
 	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature"`
+	Temperature *float64  `json:"temperature,omitempty"` // nil: the model does not accept it
 	Stream      bool      `json:"stream"`
 }
 
@@ -99,11 +106,7 @@ func (e *retryable) Unwrap() error { return e.err }
 // network errors, timeouts, 408, 429 and 5xx, up to translate.max_retries
 // times. Any other failure is returned at once.
 func (o *OpenAI) Translate(ctx context.Context, req Request) (string, error) {
-	body, err := json.Marshal(chatRequest{
-		Model:       o.model,
-		Messages:    BuildMessages(req),
-		Temperature: o.temperature,
-	})
+	body, err := o.body(req)
 	if err != nil {
 		return "", err
 	}
@@ -112,6 +115,18 @@ func (o *OpenAI) Translate(ctx context.Context, req Request) (string, error) {
 		text, err := o.send(ctx, body)
 		if err == nil {
 			return text, nil
+		}
+		// Some models reject the temperature parameter: drop it for this and
+		// every later request instead of failing the whole book.
+		if _, rejected := errors.AsType[*temperatureRejected](err); rejected && !o.noTemperature.Swap(true) {
+			o.log.Warn("the model does not accept translate.temperature; translating without it")
+		}
+		if o.noTemperature.Load() && bytes.Contains(body, []byte(`"temperature"`)) {
+			if body, err = o.body(req); err != nil {
+				return "", err
+			}
+			attempt--
+			continue
 		}
 		retry, ok := errors.AsType[*retryable](err)
 		if !ok || ctx.Err() != nil {
@@ -131,6 +146,22 @@ func (o *OpenAI) Translate(ctx context.Context, req Request) (string, error) {
 		}
 	}
 }
+
+// body encodes the request, with the temperature unless the server has
+// rejected that parameter.
+func (o *OpenAI) body(req Request) ([]byte, error) {
+	chat := chatRequest{Model: o.model, Messages: BuildMessages(req)}
+	if !o.noTemperature.Load() {
+		chat.Temperature = &o.temperature
+	}
+	return json.Marshal(chat)
+}
+
+// temperatureRejected is a 400 answer that blames the temperature parameter.
+type temperatureRejected struct{ err error }
+
+func (e *temperatureRejected) Error() string { return e.err.Error() }
+func (e *temperatureRejected) Unwrap() error { return e.err }
 
 // send performs one request.
 func (o *OpenAI) send(ctx context.Context, body []byte) (string, error) {
@@ -166,6 +197,9 @@ func (o *OpenAI) send(ctx context.Context, body []byte) (string, error) {
 			resp.StatusCode == http.StatusTooManyRequests,
 			resp.StatusCode >= 500:
 			return "", &retryable{err: err, after: retryAfter(resp.Header.Get("Retry-After"))}
+		case resp.StatusCode == http.StatusBadRequest && bytes.Contains(body, []byte(`"temperature"`)) &&
+			strings.Contains(strings.ToLower(errorText(data)), "temperature"):
+			return "", &temperatureRejected{err: err}
 		case resp.StatusCode == http.StatusUnauthorized && o.apiKey == "" && o.apiKeyEnv != "":
 			// The usual cause: the variable is set in the shell but not exported.
 			return "", fmt.Errorf("%w (no key was sent: the environment variable %s is empty; set it with: export %s=...)",

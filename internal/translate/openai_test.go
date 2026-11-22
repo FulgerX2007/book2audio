@@ -94,7 +94,7 @@ func TestOpenAISendsChatCompletionRequest(t *testing.T) {
 	if gotAuth != "Bearer secret-key" || gotType != "application/json" {
 		t.Errorf("headers: Authorization = %q, Content-Type = %q", gotAuth, gotType)
 	}
-	if gotBody.Model != "test-model" || gotBody.Temperature != 0.3 || gotBody.Stream {
+	if gotBody.Model != "test-model" || gotBody.Temperature == nil || *gotBody.Temperature != 0.3 || gotBody.Stream {
 		t.Errorf("body = %+v", gotBody)
 	}
 	if len(gotBody.Messages) != 2 || gotBody.Messages[0].Role != "system" ||
@@ -359,5 +359,61 @@ func TestOpenAIUnauthorizedWithoutKeyNamesTheVariable(t *testing.T) {
 				t.Errorf("hint present = %v, want %v: %v", got, tt.wantHint, err)
 			}
 		})
+	}
+}
+
+func TestOpenAIDropsRejectedTemperature(t *testing.T) {
+	var withTemperature, without atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("request body: %v", err)
+		}
+		if body.Temperature != nil {
+			withTemperature.Add(1)
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, `{"error":{"message":"`+"`temperature`"+` is deprecated for this model."}}`)
+			return
+		}
+		without.Add(1)
+		io.WriteString(w, ok("ответ").body)
+	}))
+	defer srv.Close()
+
+	cfg := config.Default().Translate
+	cfg.BaseURL, cfg.Model, cfg.APIKeyEnv, cfg.MaxRetries = srv.URL, "m", "", 0
+	o, err := NewOpenAI(cfg)
+	if err != nil {
+		t.Fatalf("NewOpenAI: %v", err)
+	}
+	for i := range 3 {
+		got, err := o.Translate(context.Background(), sampleRequest)
+		if err != nil || got != "ответ" {
+			t.Fatalf("Translate %d = %q, %v", i, got, err)
+		}
+	}
+	// The parameter is tried once and never sent again.
+	if withTemperature.Load() != 1 || without.Load() != 3 {
+		t.Errorf("requests with temperature = %d, without = %d; want 1 and 3", withTemperature.Load(), without.Load())
+	}
+}
+
+func TestOpenAIOtherBadRequestIsNotRetried(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, `{"error":{"message":"unknown model"}}`)
+	}))
+	defer srv.Close()
+
+	cfg := config.Default().Translate
+	cfg.BaseURL, cfg.Model, cfg.APIKeyEnv = srv.URL, "m", ""
+	o, _ := NewOpenAI(cfg)
+	if _, err := o.Translate(context.Background(), sampleRequest); err == nil || !strings.Contains(err.Error(), "unknown model") {
+		t.Fatalf("Translate error = %v, want the server message", err)
+	}
+	if calls.Load() != 1 {
+		t.Errorf("requests = %d, want 1", calls.Load())
 	}
 }
