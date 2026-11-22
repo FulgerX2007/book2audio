@@ -11,8 +11,25 @@ import (
 	"github.com/FulgerX2007/book2audio/internal/clean"
 )
 
-// IntroTitle is the title of chapter 0: the text before the first heading.
+// IntroTitle is the title of chapter 0, the text before the first heading,
+// in a Russian audiobook.
 const IntroTitle = "Вступление"
+
+// sectionTitle is the title format of a fallback section in a Russian
+// audiobook.
+const sectionTitle = "Часть %d"
+
+// Titles returns the generated titles for an audiobook in the language
+// lang (a primary subtag such as "ru"): the title of chapter 0 and the
+// format of a fallback section title. They are read aloud, so they are
+// Russian for a Russian audiobook and English otherwise; a translation
+// stage turns the English ones into the target language.
+func Titles(lang string) (intro, section string) {
+	if lang == "ru" || lang == "" {
+		return IntroTitle, sectionTitle
+	}
+	return "Introduction", "Part %d"
+}
 
 // shortLine mirrors the paragraph rule of package clean: a heading that is
 // followed directly by text must be clearly shorter than a full line.
@@ -33,6 +50,20 @@ type Options struct {
 	MaxChars      int            // and is not longer than this
 	TOCMax        int            // a page with more matching lines is a table of contents
 	FallbackPages int            // section size when no heading is found
+	IntroTitle    string         // title of chapter 0; empty: IntroTitle
+	SectionTitle  string         // format of a fallback section title; empty: "Часть %d"
+}
+
+// titles returns the generated titles with the defaults filled in.
+func (o Options) titles() (intro, section string) {
+	intro, section = o.IntroTitle, o.SectionTitle
+	if intro == "" {
+		intro = IntroTitle
+	}
+	if section == "" {
+		section = sectionTitle
+	}
+	return intro, section
 }
 
 // Detect finds the chapter starts in the cleaned pages (see clean.Pages)
@@ -84,10 +115,12 @@ func Detect(pages [][]clean.Line, opt Options) (starts []Start, toc map[int]bool
 	}
 
 	if len(starts) == 0 {
-		return fallback(pages, toc, opt.FallbackPages), toc
+		_, section := opt.titles()
+		return fallback(pages, toc, opt.FallbackPages, section), toc
 	}
 	if starts[0].StartPage != first.Page || starts[0].StartLine != first.Num {
-		intro := Start{N: 0, Title: IntroTitle, StartPage: first.Page, StartLine: first.Num}
+		introTitle, _ := opt.titles()
+		intro := Start{N: 0, Title: introTitle, StartPage: first.Page, StartLine: first.Num}
 		starts = append([]Start{intro}, starts...)
 	}
 	return starts, toc
@@ -111,7 +144,7 @@ func isHeading(lines []clean.Line, j int, opt Options, width int) bool {
 }
 
 // fallback cuts the pages with text into sections of size pages.
-func fallback(pages [][]clean.Line, toc map[int]bool, size int) []Start {
+func fallback(pages [][]clean.Line, toc map[int]bool, size int, title string) []Start {
 	var starts []Start
 	inSection := 0
 	for i, lines := range pages {
@@ -120,7 +153,7 @@ func fallback(pages [][]clean.Line, toc map[int]bool, size int) []Start {
 		}
 		if inSection == 0 {
 			n := len(starts) + 1
-			starts = append(starts, Start{N: n, Title: fmt.Sprintf("Часть %d", n), StartPage: lines[0].Page, StartLine: lines[0].Num})
+			starts = append(starts, Start{N: n, Title: fmt.Sprintf(title, n), StartPage: lines[0].Page, StartLine: lines[0].Num})
 		}
 		if inSection++; inSection == size {
 			inSection = 0

@@ -464,3 +464,45 @@ func TestRunOnSamplePDF(t *testing.T) {
 		}
 	}
 }
+
+func TestTitles(t *testing.T) {
+	tests := []struct{ lang, intro, section string }{
+		{"ru", "Вступление", "Часть %d"},
+		{"", "Вступление", "Часть %d"},
+		{"en", "Introduction", "Part %d"},
+		{"de", "Introduction", "Part %d"},
+	}
+	for _, tt := range tests {
+		intro, section := Titles(tt.lang)
+		if intro != tt.intro || section != tt.section {
+			t.Errorf("Titles(%q) = %q, %q; want %q, %q", tt.lang, intro, section, tt.intro, tt.section)
+		}
+	}
+}
+
+// The generated titles follow the language of the audiobook, and changing
+// that language rebuilds the chapters.
+func TestRunTitlesFollowTheTargetLanguage(t *testing.T) {
+	ws := newBook(t, para("Foreword")+"\n\nChapter 1: A\n"+para("Body"))
+	run(t, ws)
+	if intro := readFile(t, ws.ChapterPath(0)); !strings.HasPrefix(intro, "# Вступление\n") {
+		t.Fatalf("Russian audiobook: chapter 0 = %q", intro)
+	}
+
+	ws.Config.TargetLang = "en"
+	res := run(t, ws)
+	if intro := readFile(t, ws.ChapterPath(0)); !strings.HasPrefix(intro, "# Introduction\n") {
+		t.Errorf("English audiobook: chapter 0 = %q", intro)
+	}
+	if res.Written == 0 {
+		t.Errorf("Result = %+v, want chapter 0 rewritten after the language change", res)
+	}
+
+	// Without headings the sections are named in the same language.
+	plain := newBook(t, para("One"), para("Two"))
+	plain.Config.TargetLang = "en"
+	run(t, plain)
+	if first := readFile(t, plain.ChapterPath(1)); !strings.HasPrefix(first, "# Part 1\n") {
+		t.Errorf("fallback section = %q", first)
+	}
+}

@@ -7,7 +7,7 @@
 # After init the book's main config is work/<slug>/config.yaml.
 
 source_lang: en            # language of the book
-target_lang: ru            # language of the translation and the speech
+target_lang: ru            # language of the translation and the speech; the same as source_lang means no translation
 workdir: work              # where the book working folders are created
 
 book:                      # audiobook tags; empty means taken from the PDF metadata

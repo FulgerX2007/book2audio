@@ -373,6 +373,22 @@ var tesseractLangs = map[string]string{
 	"zh": "chi_sim",
 }
 
+// SameLanguage reports whether the book is read in its own language: the
+// translate stage then passes the text on without calling a model.
+func (c Config) SameLanguage() bool {
+	return primaryLang(c.SourceLang) != "" && primaryLang(c.SourceLang) == primaryLang(c.TargetLang)
+}
+
+// TargetPrimary returns the primary subtag of target_lang: "en" for "en-US".
+func (c Config) TargetPrimary() string { return primaryLang(c.TargetLang) }
+
+// primaryLang returns the primary subtag of a language code, lower-cased.
+func primaryLang(code string) string {
+	primary, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(code)), "-")
+	primary, _, _ = strings.Cut(primary, "_")
+	return primary
+}
+
 // OCRLang returns the tesseract language code for OCR: extract.ocr_lang when
 // it is set, otherwise the code derived from source_lang ("en" or "en-US"
 // gives "eng").
@@ -380,8 +396,7 @@ func (c Config) OCRLang() (string, error) {
 	if lang := strings.TrimSpace(c.Extract.OCRLang); lang != "" {
 		return lang, nil
 	}
-	primary, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(c.SourceLang)), "-")
-	primary, _, _ = strings.Cut(primary, "_")
+	primary := primaryLang(c.SourceLang)
 	if lang, ok := tesseractLangs[primary]; ok {
 		return lang, nil
 	}

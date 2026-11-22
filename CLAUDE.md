@@ -37,7 +37,8 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 
 ## Rules
 
-- **Language.** Everything is in English: code comments, commit messages, CLI output, errors, log messages, README and the example config. The only Russian strings are content of the audiobook itself: `chapters.IntroTitle`, the fallback section titles and `speech.URLWord`.
+- **Language.** Everything is in English: code comments, commit messages, CLI output, errors, log messages, README and the example config. The only Russian strings are content of a Russian audiobook: `chapters.IntroTitle`, the fallback section titles and `speech.URLWord`; `chapters.Titles` and `speech.URLWordFor` choose them by `target_lang`.
+- **Same language.** When `Config.SameLanguage()` holds, the translate stage uses `translate.Passthrough` and needs no model settings; get the translator from `Deps.Translator`, not from `NewTranslator` directly.
 - **External tools** are run only through `execx.Runner`. Unit tests use `execx.FakeRunner`; tests with real tools skip themselves when the tool is missing.
 - **Backends** are created by a factory (`translate.New`, `tts.New`) and injected through `pipeline.Deps`. Tests use `translate.FakeTranslator` and `tts.FakeSynthesizer`, which count their calls — assert on the calls to prove that work was *not* repeated.
 - **Speech backends.** An engine that is expensive to start implements `tts.BatchSynthesizer`; the synth stage then gives each worker one batch instead of one segment. A per-segment error is returned in the slice and recorded as a failed unit; an engine that cannot run at all is a fatal error.
@@ -48,9 +49,9 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
   | Stage | Unit | Input hash |
   |---|---|---|
   | extract | page | PDF sha256, page number, `ocr_min_chars`, OCR language, `ocr_dpi` |
-  | chapters | `index` (chapters.json) | all page texts, heading settings, `clean.RulesVersion` |
+  | chapters | `index` (chapters.json) | all page texts, heading settings, `clean.RulesVersion`; the generated titles when they are not the Russian ones |
   | chapters | chapter | title, cleaned source lines, `clean.RulesVersion` |
-  | translate | chunk (ID = hash) | chunk text, glossary terms that occur in it, backend, model, languages, temperature, `translate.PromptHash()` |
+  | translate | chunk (ID = hash) | chunk text, glossary terms that occur in it, backend, model, languages, temperature, `translate.PromptHash()`; in same-language mode only the chunk text |
   | translated | chapter file | ordered chunk hashes |
   | synth | segment (ID = hash) | segment text, backend, command, args before `{out}` is substituted; `accent_command` and its args when set |
   | build | chapter WAV | ordered segment hashes with paragraph flags, pause length |

@@ -327,3 +327,27 @@ func TestParseTranslateHeaders(t *testing.T) {
 		t.Errorf("header = %q, want wrkspc_test", got)
 	}
 }
+
+func TestSameLanguage(t *testing.T) {
+	tests := []struct {
+		source, target string
+		same           bool
+		primary        string
+	}{
+		{"en", "ru", false, "ru"},
+		{"en", "en", true, "en"},
+		{"en-US", "EN_gb", true, "en"},
+		{" ru ", "ru", true, "ru"},
+		{"", "", false, ""},
+	}
+	for _, tt := range tests {
+		c := Default()
+		c.SourceLang, c.TargetLang = tt.source, tt.target
+		if got := c.SameLanguage(); got != tt.same {
+			t.Errorf("SameLanguage(%q, %q) = %v, want %v", tt.source, tt.target, got, tt.same)
+		}
+		if got := c.TargetPrimary(); got != tt.primary {
+			t.Errorf("TargetPrimary(%q) = %q, want %q", tt.target, got, tt.primary)
+		}
+	}
+}

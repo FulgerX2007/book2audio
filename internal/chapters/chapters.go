@@ -54,6 +54,9 @@ func Run(ctx context.Context, ws *workspace.Workspace, log *slog.Logger) (Result
 		TOCMax:        ws.Config.Chapters.TOCMaxHeadings,
 		FallbackPages: ws.Config.Chapters.FallbackPages,
 	}
+	// Russian titles for a Russian audiobook; English ones otherwise, which
+	// the translate stage turns into the target language.
+	opt.IntroTitle, opt.SectionTitle = Titles(ws.Config.TargetPrimary())
 
 	pages := clean.Pages(raw)
 	detected, toc := Detect(pages, opt)
@@ -61,6 +64,11 @@ func Run(ctx context.Context, ws *workspace.Workspace, log *slog.Logger) (Result
 
 	indexIn := workspace.HashStrings(Stage, clean.RulesVersion, pagesHash, opt.Heading.String(),
 		strconv.Itoa(opt.MaxChars), strconv.Itoa(opt.TOCMax), strconv.Itoa(opt.FallbackPages))
+	if opt.IntroTitle != IntroTitle {
+		// The generated titles enter the hash only when they differ from the
+		// Russian ones, so the index of an existing Russian book stays valid.
+		indexIn = workspace.HashStrings(indexIn, opt.IntroTitle, opt.SectionTitle)
+	}
 	starts, manual, err := resolveStarts(ws, detected, indexIn, len(raw), log)
 	if err != nil {
 		return res, err

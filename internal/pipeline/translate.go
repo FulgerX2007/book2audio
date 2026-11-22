@@ -87,16 +87,22 @@ type translateJob struct {
 // then returns workspace.ErrUnitsFailed.
 func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Translator, log *slog.Logger, opts TranslateOptions) (TranslateResult, error) {
 	var res TranslateResult
-	if err := ws.Config.RequireTranslate(); err != nil {
+	same := ws.Config.SameLanguage()
+	if same {
+		// Whatever backend was passed in, no model is called.
+		tr = translate.Passthrough{}
+	} else if err := ws.Config.RequireTranslate(); err != nil {
 		return res, err
 	}
 	starts, err := chapters.Load(ws)
 	if err != nil {
 		return res, err
 	}
-	glossary, err := translate.LoadGlossary(ws.GlossaryPath())
-	if err != nil {
-		return res, err
+	var glossary translate.Glossary
+	if !same {
+		if glossary, err = translate.LoadGlossary(ws.GlossaryPath()); err != nil {
+			return res, err
+		}
 	}
 
 	// Every chapter is planned, also when only one is selected: the units
@@ -165,7 +171,10 @@ func Translate(ctx context.Context, ws *workspace.Workspace, tr translate.Transl
 		}
 	}
 
-	if len(jobs) > 0 {
+	switch {
+	case len(jobs) > 0 && same:
+		log.Info("source and target language are the same: the text is passed on without translation", "chunks", len(jobs))
+	case len(jobs) > 0:
 		log.Info("translating", "chunks", len(jobs), "workers", ws.Config.Translate.Workers)
 	}
 	var mu sync.Mutex // guards res
@@ -252,6 +261,13 @@ func planChapter(ws *workspace.Workspace, n int, glossary translate.Glossary) (c
 	cfg := ws.Config
 	plan := chapterPlan{n: n, chunks: chunk.Split(ch, cfg.Translate.ChunkChars)}
 	for _, c := range plan.chunks {
+		if cfg.SameLanguage() {
+			// The text is passed on unchanged: no translation setting can
+			// affect the result.
+			plan.hashes = append(plan.hashes, workspace.HashStrings(StageTranslate, c.Text, "same-language"))
+			plan.terms = append(plan.terms, nil)
+			continue
+		}
 		terms := glossary.Match(c.Text)
 		// Only the terms that occur in the chunk enter its hash, so editing
 		// a term re-translates just the chunks that mention it. The context

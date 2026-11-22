@@ -36,6 +36,16 @@ func DefaultDeps() Deps {
 	return Deps{Runner: execx.OSRunner{}, NewTranslator: translate.New, NewSynthesizer: tts.New}
 }
 
+// Translator returns the translator of a book: the configured backend, or a
+// pass-through when the book is read in its own language, which needs no
+// model settings.
+func (d Deps) Translator(cfg config.Config) (translate.Translator, error) {
+	if cfg.SameLanguage() {
+		return translate.Passthrough{}, nil
+	}
+	return d.NewTranslator(cfg.Translate)
+}
+
 // RunOptions select the stages of a run.
 type RunOptions struct {
 	From string // first stage to run; empty: the first stage
@@ -51,7 +61,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, deps Deps, log *slog.Logg
 		return err
 	}
 	// Fail before any work when a later stage is not configured.
-	if slices.Contains(stages, StageTranslate) {
+	if slices.Contains(stages, StageTranslate) && !ws.Config.SameLanguage() {
 		if err := ws.Config.RequireTranslate(); err != nil {
 			return err
 		}
@@ -113,7 +123,7 @@ func runStage(ctx context.Context, ws *workspace.Workspace, deps Deps, log *slog
 		return fmt.Sprintf("%d chapters, %d written now, %d kept with hand edits",
 			res.Chapters, res.Written, res.Kept), err
 	case StageTranslate:
-		tr, err := deps.NewTranslator(ws.Config.Translate)
+		tr, err := deps.Translator(ws.Config)
 		if err != nil {
 			return "", err
 		}

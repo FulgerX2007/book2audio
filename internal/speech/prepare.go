@@ -11,8 +11,17 @@ import (
 	"github.com/FulgerX2007/book2audio/internal/chunk"
 )
 
-// URLWord is read instead of a web address.
+// URLWord is read instead of a web address in a Russian audiobook.
 const URLWord = "ссылка"
+
+// URLWordFor returns the word read instead of a web address in an
+// audiobook in the language lang (a primary subtag such as "ru").
+func URLWordFor(lang string) string {
+	if lang == "ru" || lang == "" {
+		return URLWord
+	}
+	return "link"
+}
 
 // Segment is a piece of text synthesised in one call of the speech engine.
 type Segment struct {
@@ -53,9 +62,12 @@ var replacer = strings.NewReplacer(
 // speech engines handle unevenly (typographic quotes, dashes, ellipses,
 // square brackets) are brought to one plain form. Line breaks become
 // spaces: engines treat a new line as a new utterance.
-func Clean(s string) string {
+func Clean(s string) string { return CleanLang(s, "ru") }
+
+// CleanLang is Clean for an audiobook in the language lang.
+func CleanLang(s, lang string) string {
 	s = linePrefixRe.ReplaceAllString(s, "")
-	s = urlRe.ReplaceAllString(s, URLWord)
+	s = urlRe.ReplaceAllString(s, URLWordFor(lang))
 	s = footnoteRe.ReplaceAllString(s, "")
 	// Emphasis may be nested ("**_word_**"): peel it layer by layer.
 	for range 3 {
@@ -71,13 +83,16 @@ func Clean(s string) string {
 // A paragraph is one segment; a paragraph longer than maxChars is cut
 // between sentences. A segment never spans two paragraphs, so editing a
 // paragraph changes only its own segments.
-func Prepare(ch chunk.Chapter, maxChars int) []Segment {
+func Prepare(ch chunk.Chapter, maxChars int) []Segment { return PrepareLang(ch, maxChars, "ru") }
+
+// PrepareLang is Prepare for an audiobook in the language lang.
+func PrepareLang(ch chunk.Chapter, maxChars int, lang string) []Segment {
 	var segments []Segment
-	if title := Clean(ch.Title); title != "" {
+	if title := CleanLang(ch.Title, lang); title != "" {
 		segments = append(segments, Segment{Text: title, EndsParagraph: true, Heading: true})
 	}
 	for _, p := range ch.Paragraphs {
-		text := Clean(p)
+		text := CleanLang(p, lang)
 		if text == "" {
 			continue
 		}

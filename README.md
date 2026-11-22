@@ -132,9 +132,20 @@ Piper chooses the stress without looking at the context and gets homographs wron
 
 Piper reads the stress mark U+0301 after the stressed vowel: `го́лоса`. Turning the command on or off, or changing it, re-synthesises the book; audio made with the earlier setting stays in the cache.
 
+## A book in its own language
+
+To make an audiobook without translating, set both languages to the same value:
+
+```yaml
+source_lang: en
+target_lang: en
+```
+
+The translate stage then calls no model: it passes the chapter text on unchanged, so `translate.model` and an API key are not needed. Use a speech engine that reads that language, for example Piper with an English voice; Silero as set up by `scripts/silero_tts.py` reads only Russian. The chapter files of that stage keep their names (`chNN.ru.md`) and can still be edited by hand before speech.
+
 ## Language of the output
 
-The tool's messages, log and errors are in English. Text that ends up in the audiobook is in Russian: the title of chapter 0 ("Вступление"), the titles of fallback sections ("Часть N") and the word read in place of a URL ("ссылка").
+The tool's messages, log and errors are in English. Text that the tool adds to the audiobook follows `target_lang`: for Russian it is "Вступление" (the title of chapter 0), "Часть N" (fallback sections) and "ссылка" (read in place of a URL); for any other language it is "Introduction", "Part N" and "link". Changing `target_lang` of an existing book rebuilds its chapters.
 
 ## Limitations
 

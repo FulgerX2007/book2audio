@@ -315,10 +315,12 @@ func setupTranslate(deps Deps) func(*flag.FlagSet) RunFunc {
 			}
 			defer ws.Close()
 
-			if err := ws.Config.RequireTranslate(); err != nil {
-				return err
+			if !ws.Config.SameLanguage() {
+				if err := ws.Config.RequireTranslate(); err != nil {
+					return err
+				}
 			}
-			tr, err := deps.NewTranslator(ws.Config.Translate)
+			tr, err := deps.Translator(ws.Config)
 			if err != nil {
 				return err
 			}

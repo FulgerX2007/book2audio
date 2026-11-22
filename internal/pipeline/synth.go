@@ -86,7 +86,7 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 		if err != nil {
 			return res, err
 		}
-		segments := speech.Prepare(chunk.ParseChapter(string(text)), ws.Config.TTS.SegmentChars)
+		segments := speech.PrepareLang(chunk.ParseChapter(string(text)), ws.Config.TTS.SegmentChars, ws.Config.TargetPrimary())
 		res.Chapters++
 		res.Segments += len(segments)
 

@@ -515,3 +515,47 @@ func TestProgressAndShorten(t *testing.T) {
 		t.Errorf("shorten of a long title = %q", got)
 	}
 }
+
+// A book read in its own language goes through every stage without a
+// translation model: the text reaches the speech engine unchanged.
+func TestRunSameLanguageSkipsTheModel(t *testing.T) {
+	ws := emptyBook(t)
+	ws.Config.SourceLang, ws.Config.TargetLang = "en", "en-US"
+	ws.Config.Translate.Model = "" // not needed
+	f := newFakes()
+	deps := f.deps()
+	deps.NewTranslator = func(config.Translate) (translate.Translator, error) {
+		t.Error("a translation backend was created for a same-language book")
+		return f.tr, nil
+	}
+
+	if err := Run(context.Background(), ws, deps, quiet, &bytes.Buffer{}, RunOptions{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if f.tr.Calls() != 0 {
+		t.Errorf("translator calls = %d, want 0", f.tr.Calls())
+	}
+	if f.syn.Calls() == 0 {
+		t.Error("nothing was synthesised")
+	}
+	got, err := os.ReadFile(ws.TranslatedChapterPath(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(ws.ChapterPath(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), translate.FakePrefix) || strings.TrimSpace(string(got)) != strings.TrimSpace(string(want)) {
+		t.Errorf("chapter 1 was changed on the way to speech:\n%s\nwant:\n%s", got, want)
+	}
+
+	// A second run repeats nothing.
+	calls := f.syn.Calls()
+	if err := Run(context.Background(), ws, deps, quiet, &bytes.Buffer{}, RunOptions{}); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	if f.syn.Calls() != calls {
+		t.Errorf("synthesizer calls after the second run = %d, want %d", f.syn.Calls(), calls)
+	}
+}

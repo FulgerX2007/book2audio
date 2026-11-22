@@ -170,3 +170,22 @@ func TestPrepareEditChangesOnlyItsParagraph(t *testing.T) {
 		t.Error("the edit changed no segment")
 	}
 }
+
+func TestURLWordFollowsTheLanguage(t *testing.T) {
+	tests := []struct{ lang, want string }{
+		{"ru", "see ссылка now"},
+		{"", "see ссылка now"},
+		{"en", "see link now"},
+		{"de", "see link now"},
+	}
+	for _, tt := range tests {
+		if got := CleanLang("see https://example.org/page now", tt.lang); got != tt.want {
+			t.Errorf("CleanLang(lang %q) = %q, want %q", tt.lang, got, tt.want)
+		}
+	}
+	ch := chunk.Chapter{Title: "One", Paragraphs: []string{"Read https://example.org today."}}
+	segs := PrepareLang(ch, 500, "en")
+	if len(segs) != 2 || segs[1].Text != "Read link today." {
+		t.Errorf("PrepareLang = %+v", segs)
+	}
+}
