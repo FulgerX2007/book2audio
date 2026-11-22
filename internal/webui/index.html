@@ -63,6 +63,20 @@
   .controls label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
   .controls label.check { color: var(--soft); min-height: 44px; }
 
+  details.settings { border-radius: 8px; background: var(--panel); border: 1px solid var(--line); }
+  details.settings summary { padding: 12px 14px; cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; list-style: none; min-height: 44px; }
+  details.settings summary::-webkit-details-marker { display: none; }
+  details.settings summary .sum { font: 13px var(--mono); color: var(--soft); }
+  details.settings summary .edit { margin-left: auto; color: var(--accent); font-weight: 600; }
+  details.settings form { padding: 4px 14px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 14px; align-items: end; }
+  details.settings label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+  details.settings label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; min-height: 44px; }
+  details.settings input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+  details.settings input:disabled { opacity: .45; }
+  details.settings .wide { grid-column: 1 / -1; }
+  details.settings .hint { font: 12px var(--mono); }
+  details.settings .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
   .banner { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
   .banner.bad { border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad); }
 
@@ -144,6 +158,23 @@
 
       <div class="banner" id="state" role="status" hidden></div>
 
+      <details class="settings" id="settings">
+        <summary><span class="label">Settings</span><span class="sum" id="setsum"></span><span class="edit">Edit</span></summary>
+        <form id="setform">
+          <label class="check wide"><input type="checkbox" id="s-translate"> Translate the book</label>
+          <label>Language of the book <input type="text" id="s-source" placeholder="en" autocomplete="off" spellcheck="false"></label>
+          <label>Translate into <input type="text" id="s-target" placeholder="ru" autocomplete="off" spellcheck="false"></label>
+          <label>Model <input type="text" id="s-model" placeholder="the model name on the server" autocomplete="off" spellcheck="false"></label>
+          <label>API address <input type="text" id="s-url" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false"></label>
+          <label>Variable with the API key <input type="text" id="s-key" placeholder="B2A_API_KEY" autocomplete="off" spellcheck="false"></label>
+          <div class="hint wide" id="s-keyhint"></div>
+          <div class="actions wide">
+            <button class="btn primary" id="s-save">Save</button>
+            <span id="s-msg" role="status"></span>
+          </div>
+        </form>
+      </details>
+
       <section class="stages" id="stages" aria-label="Stages"></section>
 
       <section id="outsec" class="out" hidden>
@@ -189,6 +220,7 @@ let selected = decodeURIComponent(location.hash.slice(1)) || "";
 // Short unit names for the stage tiles.
 const UNITS = {extract: "pages", chapters: "files", translate: "chunks", synth: "segments", build: "files"};
 let stagesFor = "";      // the book whose stage lists fill the selects
+let settingsFor = "";   // the book whose settings fill the form
 let retryFrom = "";      // the stage "Retry failed" starts from
 
 function el(tag, text, cls) {
@@ -303,6 +335,7 @@ async function loadDetail() {
 
   const running = !!(d.job && d.job.running);
   const active = activeStage(d);
+  showSettings(d, running);
   $("run").disabled = running; $("stop").disabled = !running; $("retry").disabled = running;
 
   const state = $("state");
@@ -387,6 +420,68 @@ async function loadDetail() {
     if (atEnd) log.scrollTop = log.scrollHeight;
   }
 }
+
+// fillSettings puts the saved settings into the form.
+function fillSettings(s) {
+  $("s-translate").checked = s.translate;
+  $("s-source").value = s.sourceLang;
+  $("s-target").value = s.translate ? s.targetLang : "";
+  $("s-model").value = s.model;
+  $("s-url").value = s.baseUrl;
+  $("s-key").value = s.apiKeyEnv;
+  syncSettings();
+}
+
+// syncSettings greys out the translation fields when translation is off.
+function syncSettings() {
+  const on = $("s-translate").checked;
+  for (const id of ["s-target", "s-model", "s-url", "s-key"]) $(id).disabled = !on;
+}
+
+function showSettings(d, running) {
+  const s = d.settings;
+  $("setsum").textContent = s.translate
+    ? "translate " + s.sourceLang + " → " + s.targetLang + " · model " + (s.model || "not set")
+    : "no translation · read in " + s.sourceLang;
+  $("setsum").className = "sum" + (s.translate && !s.model ? " bad" : "");
+
+  const hint = $("s-keyhint");
+  if (!s.translate) { hint.textContent = ""; }
+  else if (!s.apiKeyEnv) { hint.textContent = "no API key is sent (fine for a local server)"; hint.className = "hint wide muted"; }
+  else if (s.keySet) { hint.textContent = "key found in " + s.apiKeyEnv; hint.className = "hint wide ok"; }
+  else { hint.textContent = s.apiKeyEnv + " is empty: run export " + s.apiKeyEnv + "=... in the terminal, then start the interface again"; hint.className = "hint wide bad"; }
+
+  $("s-save").disabled = running;
+  // The form is filled once per book, so the refresh does not undo typing.
+  if (settingsFor !== d.slug) {
+    fillSettings(s);
+    $("s-msg").textContent = "";
+    $("settings").open = s.translate && !s.model;
+    settingsFor = d.slug;
+  }
+}
+
+$("s-translate").onchange = () => {
+  syncSettings();
+  if ($("s-translate").checked && !$("s-target").value) $("s-target").value = "ru";
+};
+
+$("setform").onsubmit = async ev => {
+  ev.preventDefault();
+  const msg = $("s-msg");
+  try {
+    const saved = await api("/api/books/" + encodeURIComponent(selected) + "/settings", {
+      method: "POST", headers: {...HEADER, "Content-Type": "application/json"},
+      body: JSON.stringify({
+        translate: $("s-translate").checked, sourceLang: $("s-source").value, targetLang: $("s-target").value,
+        model: $("s-model").value, baseUrl: $("s-url").value, apiKeyEnv: $("s-key").value,
+      }),
+    });
+    fillSettings(saved);
+    msg.textContent = "Saved. The next run uses these settings."; msg.className = "ok";
+  } catch (e) { msg.textContent = e.message; msg.className = "bad"; return; }
+  refresh();
+};
 
 async function refresh() { await Promise.all([loadBooks(), loadDetail()]); }
 

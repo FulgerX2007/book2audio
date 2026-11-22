@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/pipeline"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
@@ -73,6 +74,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/books/{slug}", s.bookDetail)
 	mux.HandleFunc("POST /api/books/{slug}/run", s.startRun)
 	mux.HandleFunc("POST /api/books/{slug}/stop", s.stopRun)
+	mux.HandleFunc("POST /api/books/{slug}/settings", s.saveSettings)
 	mux.HandleFunc("GET /api/books/{slug}/out/{name}", s.download)
 	return s.guard(mux)
 }
@@ -156,8 +158,36 @@ type bookJSON struct {
 	Stages  []stageJSON `json:"stages"`
 }
 
+// settingsJSON are the book settings that can be changed in the browser.
+type settingsJSON struct {
+	// Translate is false for a book read in its own language: the target
+	// language is then the source language and no model is used.
+	Translate  bool   `json:"translate"`
+	SourceLang string `json:"sourceLang"`
+	TargetLang string `json:"targetLang"`
+	Model      string `json:"model"`
+	BaseURL    string `json:"baseUrl"`
+	APIKeyEnv  string `json:"apiKeyEnv"`
+	// KeySet tells whether the variable named by APIKeyEnv has a value in
+	// the environment of this server. The key itself never leaves it.
+	KeySet bool `json:"keySet"`
+}
+
+func settingsOf(cfg config.Config) settingsJSON {
+	return settingsJSON{
+		Translate:  !cfg.SameLanguage(),
+		SourceLang: cfg.SourceLang,
+		TargetLang: cfg.TargetLang,
+		Model:      cfg.Translate.Model,
+		BaseURL:    cfg.Translate.BaseURL,
+		APIKeyEnv:  cfg.Translate.APIKeyEnv,
+		KeySet:     cfg.Translate.APIKeyEnv != "" && os.Getenv(cfg.Translate.APIKeyEnv) != "",
+	}
+}
+
 type detailJSON struct {
 	bookJSON
+	Settings   settingsJSON  `json:"settings"`
 	Dir        string        `json:"dir"`
 	ConfigPath string        `json:"configPath"`
 	SourceLang string        `json:"sourceLang"`
@@ -209,6 +239,7 @@ func (s *Server) bookDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	d := detailJSON{
 		bookJSON:   s.book(slug, ws, st),
+		Settings:   settingsOf(ws.Config),
 		Dir:        ws.Dir,
 		ConfigPath: ws.ConfigPath(),
 		SourceLang: ws.Config.SourceLang,
@@ -279,6 +310,79 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request) {
 	}
 	j.cancel()
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "stopping"})
+}
+
+// saveSettings writes the translation settings of a book into its
+// config.yaml; the rest of the file, comments included, is kept.
+func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
+	slug, ok := s.slug(w, r)
+	if !ok {
+		return
+	}
+	var req settingsJSON
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("request body: %w", err))
+		return
+	}
+	ws, _, err := s.read(slug)
+	if err != nil {
+		writeError(w, statusOf(err), err)
+		return
+	}
+	if j := s.job(slug); j != nil && j.snapshot().Running {
+		writeError(w, http.StatusConflict, errors.New("the book is being processed: stop the run before changing its settings"))
+		return
+	}
+
+	source, target := strings.TrimSpace(req.SourceLang), strings.TrimSpace(req.TargetLang)
+	set := map[string]string{"source_lang": source}
+	if req.Translate {
+		model := strings.TrimSpace(req.Model)
+		probe := config.Default()
+		probe.SourceLang, probe.TargetLang = source, target
+		switch {
+		case target == "":
+			err = errors.New("choose the language to translate into")
+		case probe.SameLanguage():
+			err = errors.New("the language to translate into is the same as the language of the book: choose another one or turn translation off")
+		case model == "":
+			err = errors.New("name the model that translates")
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		set["target_lang"] = target
+		set["translate.model"] = model
+		set["translate.base_url"] = strings.TrimSpace(req.BaseURL)
+		set["translate.api_key_env"] = strings.TrimSpace(req.APIKeyEnv)
+	} else {
+		// A book read in its own language; the model settings stay as they are.
+		set["target_lang"] = source
+	}
+
+	path := ws.ConfigPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	updated, err := config.UpdateYAML(data, set)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := workspace.WriteFileAtomic(path, updated, 0o644); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.Log.Info("settings saved", "book", slug, "translate", req.Translate)
+	cfg, err := config.Load(path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, settingsOf(cfg))
 }
 
 func (s *Server) addBook(w http.ResponseWriter, r *http.Request) {

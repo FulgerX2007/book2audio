@@ -453,3 +453,95 @@ func TestServeStopsWithTheContext(t *testing.T) {
 		t.Fatal("Serve did not return after the context was cancelled")
 	}
 }
+
+func TestSettings(t *testing.T) {
+	f := newFixture(t)
+	f.upload("book.pdf", "")
+	t.Setenv("B2A_TEST_UI_KEY", "secret")
+
+	var d detailJSON
+	f.json(http.MethodGet, "/api/books/book", nil, &d)
+	if !d.Settings.Translate || d.Settings.SourceLang != "en" || d.Settings.TargetLang != "ru" || d.Settings.Model != "test-model" || d.Settings.KeySet {
+		t.Fatalf("settings = %+v", d.Settings)
+	}
+
+	// Translation with another model and key variable.
+	var saved settingsJSON
+	status := f.json(http.MethodPost, "/api/books/book/settings", settingsJSON{
+		Translate: true, SourceLang: "en", TargetLang: "de", Model: " big-model ",
+		BaseURL: "https://api.example.com/v1", APIKeyEnv: "B2A_TEST_UI_KEY",
+	}, &saved)
+	if status != http.StatusOK || saved.Model != "big-model" || saved.TargetLang != "de" || !saved.KeySet || !saved.Translate {
+		t.Fatalf("save: status %d, settings %+v", status, saved)
+	}
+	cfgPath := filepath.Join(f.server.Workdir, "book", "config.yaml")
+	text, _ := os.ReadFile(cfgPath)
+	if strings.Contains(string(text), "secret") {
+		t.Error("the key itself was written to the config")
+	}
+	// Settings the page does not show are kept.
+	if cfg, err := config.Load(cfgPath); err != nil || cfg.Extract.OCRMinChars != 0 || cfg.Translate.BaseURL != "https://api.example.com/v1" {
+		t.Errorf("config after the save = %+v, %v", cfg.Translate, err)
+	}
+
+	// Translation off: the book is read in its own language, without a model.
+	status = f.json(http.MethodPost, "/api/books/book/settings", settingsJSON{Translate: false, SourceLang: "en", TargetLang: "whatever"}, &saved)
+	if status != http.StatusOK || saved.Translate || saved.TargetLang != "en" || saved.Model != "big-model" {
+		t.Fatalf("translation off: status %d, settings %+v", status, saved)
+	}
+	f.json(http.MethodPost, "/api/books/book/run", map[string]any{"to": pipeline.StageTranslate}, nil)
+	d = f.wait("book")
+	if d.Job.Error != "" || f.tr.Calls() != 0 {
+		t.Errorf("run without translation: job %+v, translator calls %d", d.Job, f.tr.Calls())
+	}
+	if d.Settings.Translate {
+		t.Errorf("settings after the run = %+v", d.Settings)
+	}
+}
+
+func TestSettingsErrors(t *testing.T) {
+	f := newFixture(t)
+	f.upload("book.pdf", "")
+	tests := []struct {
+		name string
+		req  any
+		code int
+		want string
+	}{
+		{"no model", settingsJSON{Translate: true, SourceLang: "en", TargetLang: "ru"}, http.StatusBadRequest, "name the model"},
+		{"no target", settingsJSON{Translate: true, SourceLang: "en", Model: "m"}, http.StatusBadRequest, "language to translate into"},
+		{"same languages", settingsJSON{Translate: true, SourceLang: "en", TargetLang: "en-US", Model: "m"}, http.StatusBadRequest, "is the same"},
+		{"no source", settingsJSON{Translate: false}, http.StatusBadRequest, "source_lang"},
+		{"bad address", settingsJSON{Translate: true, SourceLang: "en", TargetLang: "ru", Model: "m", BaseURL: "nowhere"}, http.StatusBadRequest, "translate.base_url"},
+		{"malformed body", "text", http.StatusBadRequest, "request body"},
+	}
+	before, _ := os.ReadFile(filepath.Join(f.server.Workdir, "book", "config.yaml"))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var answer map[string]string
+			status := f.json(http.MethodPost, "/api/books/book/settings", tt.req, &answer)
+			if status != tt.code || !strings.Contains(answer["error"], tt.want) {
+				t.Errorf("status %d, error %q; want %d with %q", status, answer["error"], tt.code, tt.want)
+			}
+		})
+	}
+	if after, _ := os.ReadFile(filepath.Join(f.server.Workdir, "book", "config.yaml")); string(after) != string(before) {
+		t.Error("a rejected save changed the config")
+	}
+	var answer map[string]string
+	if status := f.json(http.MethodPost, "/api/books/nobody/settings", settingsJSON{}, &answer); status != http.StatusNotFound {
+		t.Errorf("unknown book: status %d", status)
+	}
+
+	// Not while the book is being processed.
+	entered, release := make(chan struct{}, 8), make(chan struct{})
+	f.tr.Fail = func(translate.Request) error { entered <- struct{}{}; <-release; return nil }
+	f.json(http.MethodPost, "/api/books/book/run", nil, nil)
+	<-entered
+	status := f.json(http.MethodPost, "/api/books/book/settings", settingsJSON{Translate: false, SourceLang: "en"}, &answer)
+	if status != http.StatusConflict || !strings.Contains(answer["error"], "stop the run") {
+		t.Errorf("save during a run: status %d, %v", status, answer)
+	}
+	close(release)
+	f.wait("book")
+}
