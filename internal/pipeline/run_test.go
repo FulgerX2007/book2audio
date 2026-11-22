@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/FulgerX2007/book2audio/internal/config"
@@ -454,8 +455,12 @@ func TestStatusChapters(t *testing.T) {
 		f := newFakes()
 		// Interrupt the translation, as status sees it from another window.
 		ctx, cancel := context.WithCancel(context.Background())
+		// Exactly the first request succeeds. Counting here, not with
+		// f.tr.Calls(): two workers can both be recorded before either
+		// looks at the count, and then no chunk would be done.
+		var asked atomic.Int32
 		f.tr.Fail = func(translate.Request) error {
-			if f.tr.Calls() >= 2 {
+			if asked.Add(1) >= 2 {
 				cancel()
 				return context.Canceled
 			}
