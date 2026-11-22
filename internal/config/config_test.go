@@ -173,6 +173,8 @@ func TestValidate(t *testing.T) {
 		{"chunk_chars too small", func(c *Config) { c.Translate.ChunkChars = 50 }, "translate.chunk_chars"},
 		{"no translate workers", func(c *Config) { c.Translate.Workers = 0 }, "translate.workers"},
 		{"negative max_retries", func(c *Config) { c.Translate.MaxRetries = -1 }, "translate.max_retries"},
+		{"header name with a colon", func(c *Config) { c.Translate.Headers = map[string]string{"x-id: 1": "v"} }, "translate.headers"},
+		{"empty header name", func(c *Config) { c.Translate.Headers = map[string]string{" ": "v"} }, "translate.headers"},
 		{"unknown tts backend", func(c *Config) { c.TTS.Backend = "espeak" }, "tts.backend"},
 		{"empty tts command", func(c *Config) { c.TTS.Command = "" }, "tts.command"},
 		{"tts args without placeholder", func(c *Config) { c.TTS.Args = []string{"--model", "v.onnx"} }, "tts.args"},
@@ -313,5 +315,15 @@ func TestRequireTTS(t *testing.T) {
 	cfg.TTS.Args = []string{"--model", "voices/ru.onnx", "--output_file", "{out}"}
 	if err := cfg.RequireTTS(); err != nil {
 		t.Errorf("RequireTTS() = %v, want nil", err)
+	}
+}
+
+func TestParseTranslateHeaders(t *testing.T) {
+	cfg, err := Parse(strings.NewReader("translate:\n  headers:\n    anthropic-workspace-id: wrkspc_test\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got := cfg.Translate.Headers["anthropic-workspace-id"]; got != "wrkspc_test" {
+		t.Errorf("header = %q, want wrkspc_test", got)
 	}
 }

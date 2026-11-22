@@ -35,6 +35,7 @@ type OpenAI struct {
 	apiKey      string
 	temperature float64
 	maxRetries  int
+	headers     map[string]string // extra request headers from translate.headers
 	client      *http.Client
 
 	// backoff is the pause before retry number attempt (1-based);
@@ -59,6 +60,7 @@ func NewOpenAI(cfg config.Translate) (*OpenAI, error) {
 		apiKey:      key,
 		temperature: cfg.Temperature,
 		maxRetries:  cfg.MaxRetries,
+		headers:     cfg.Headers,
 		client:      &http.Client{Timeout: requestTimeout},
 		backoff: func(attempt int) time.Duration {
 			return min(time.Second<<(attempt-1), maxBackoff)
@@ -137,6 +139,9 @@ func (o *OpenAI) send(ctx context.Context, body []byte) (string, error) {
 	httpReq.Header.Set("Content-Type", "application/json")
 	if o.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	}
+	for name, value := range o.headers {
+		httpReq.Header.Set(name, value)
 	}
 
 	resp, err := o.client.Do(httpReq)

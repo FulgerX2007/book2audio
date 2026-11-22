@@ -35,6 +35,11 @@ translate:
   chunk_chars: 3500        # size of a translation chunk
   workers: 4
   max_retries: 5           # retries on transport failures: 429, 5xx, timeout
+  # Optional: extra HTTP headers for every request, for a service that needs
+  # more than the key. Example for an Anthropic key that is not tied to a workspace:
+  #   headers:
+  #     anthropic-workspace-id: wrkspc_...
+  headers: {}
 
 # Speech. Two backends:
 #   piper  — the command runs for every segment: text on standard input,

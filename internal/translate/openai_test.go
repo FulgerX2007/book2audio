@@ -299,3 +299,30 @@ func TestDefaultBackoffGrowsAndIsCapped(t *testing.T) {
 		t.Errorf("backoff(20) = %v, want the cap %v", o.backoff(20), maxBackoff)
 	}
 }
+
+func TestOpenAISendsExtraHeaders(t *testing.T) {
+	var gotWorkspace, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotWorkspace, gotAuth = r.Header.Get("anthropic-workspace-id"), r.Header.Get("Authorization")
+		io.WriteString(w, ok("ответ").body)
+	}))
+	defer srv.Close()
+
+	t.Setenv("B2A_TEST_HEADERS_KEY", "secret-key")
+	cfg := config.Default().Translate
+	cfg.BaseURL, cfg.Model, cfg.APIKeyEnv = srv.URL, "m", "B2A_TEST_HEADERS_KEY"
+	cfg.Headers = map[string]string{"anthropic-workspace-id": "wrkspc_test"}
+	o, err := NewOpenAI(cfg)
+	if err != nil {
+		t.Fatalf("NewOpenAI: %v", err)
+	}
+	if _, err := o.Translate(context.Background(), sampleRequest); err != nil {
+		t.Fatalf("Translate: %v", err)
+	}
+	if gotWorkspace != "wrkspc_test" {
+		t.Errorf("anthropic-workspace-id = %q, want wrkspc_test", gotWorkspace)
+	}
+	if gotAuth != "Bearer secret-key" {
+		t.Errorf("Authorization = %q, want the key to be sent as well", gotAuth)
+	}
+}

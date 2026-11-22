@@ -82,6 +82,9 @@ type Translate struct {
 	ChunkChars  int     `yaml:"chunk_chars"`
 	Workers     int     `yaml:"workers"`
 	MaxRetries  int     `yaml:"max_retries"` // transport failures only: 429, 5xx, timeout
+	// Headers are extra HTTP headers sent with every request, for services
+	// that need more than the key (a workspace or project ID).
+	Headers map[string]string `yaml:"headers"`
 }
 
 // TTS configures the speech synthesis stage.
@@ -271,6 +274,11 @@ func (c Config) Validate() error {
 	}
 	if c.Translate.MaxRetries < 0 {
 		p.addf("translate.max_retries", "must not be negative")
+	}
+	for name := range c.Translate.Headers {
+		if strings.TrimSpace(name) == "" || strings.ContainsAny(name, " \t\r\n:") {
+			p.addf("translate.headers", "invalid header name %q", name)
+		}
 	}
 
 	if !slices.Contains(ttsBackends, c.TTS.Backend) {
