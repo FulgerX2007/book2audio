@@ -8,11 +8,12 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// UpdateYAML sets string values in a YAML config and returns the new text.
-// Keys are dotted paths such as "translate.model". Everything else in the
+// UpdateYAML sets values in a YAML config and returns the new text. Keys
+// are dotted paths such as "translate.model"; a value is a string or a list
+// of strings. Everything else in the
 // document, comments included, is kept. The result is parsed and validated
 // as a config: an update that makes the config invalid is an error.
-func UpdateYAML(data []byte, set map[string]string) ([]byte, error) {
+func UpdateYAML(data []byte, set map[string]any) ([]byte, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("parsing YAML: %w", err)
@@ -46,9 +47,9 @@ func UpdateYAML(data []byte, set map[string]string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// setPath sets the string scalar at path inside the mapping node, creating
-// the mappings on the way.
-func setPath(node *yaml.Node, path []string, value string) error {
+// setPath sets the value at path inside the mapping node, creating the
+// mappings on the way.
+func setPath(node *yaml.Node, path []string, value any) error {
 	for i, key := range path {
 		var child *yaml.Node
 		for j := 0; j+1 < len(node.Content); j += 2 {
@@ -61,18 +62,32 @@ func setPath(node *yaml.Node, path []string, value string) error {
 		if child == nil {
 			child = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 			if last {
-				child = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str"}
+				child = &yaml.Node{}
 			}
 			node.Content = append(node.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, child)
 		}
 		if last {
-			if child.Kind != yaml.ScalarNode {
-				return fmt.Errorf("is not a simple value")
-			}
 			// Keep the comments of the line; replace only the value.
-			child.Tag, child.Value, child.Style = "!!str", value, 0
-			if value == "" {
-				child.Style = yaml.DoubleQuotedStyle
+			switch v := value.(type) {
+			case string:
+				if child.Kind != 0 && child.Kind != yaml.ScalarNode {
+					return fmt.Errorf("is not a simple value")
+				}
+				child.Kind, child.Tag, child.Value, child.Style, child.Content = yaml.ScalarNode, "!!str", v, 0, nil
+				if v == "" {
+					child.Style = yaml.DoubleQuotedStyle
+				}
+			case []string:
+				if child.Kind == yaml.MappingNode {
+					return fmt.Errorf("is not a list")
+				}
+				child.Kind, child.Tag, child.Value, child.Style = yaml.SequenceNode, "!!seq", "", yaml.FlowStyle
+				child.Content = nil
+				for _, item := range v {
+					child.Content = append(child.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: item, Style: yaml.DoubleQuotedStyle})
+				}
+			default:
+				return fmt.Errorf("unsupported value %T", value)
 			}
 			return nil
 		}

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -701,5 +702,24 @@ func TestSegmentHashLatinWords(t *testing.T) {
 	withoutRules := workspace.HashStrings(StageSynth, "Журнал Wired.", config.BackendSilero, "silero_tts.py")
 	if got := segmentHash(ws, "Журнал Wired."); got == withoutRules || got == piperLatin {
 		t.Error("silero: a segment with Latin words must depend on the rewriting rules")
+	}
+}
+
+// A speech engine that is not installed stops the stage at once: no segment
+// is recorded as failed, so nothing has to be retried one by one.
+func TestSynthMissingToolIsFatal(t *testing.T) {
+	ws := translatedBook(t, twoChapters()...)
+	syn := &tts.FakeSynthesizer{Fail: func(string) error {
+		return fmt.Errorf("%w: piper, install Piper and a voice model", execx.ErrToolNotFound)
+	}}
+	res, err := Synth(context.Background(), ws, syn, quiet, SynthOptions{Chapter: AllChapters})
+	if !errors.Is(err, execx.ErrToolNotFound) || errors.Is(err, workspace.ErrUnitsFailed) {
+		t.Fatalf("Synth error = %v, want the missing tool", err)
+	}
+	if res.Failed != 0 {
+		t.Errorf("Result = %+v, want no failed segments", res)
+	}
+	if c := ws.Manifest.Counts(StageSynth); c.Failed != 0 || c.Done != 0 {
+		t.Errorf("Counts = %+v, want nothing recorded", c)
 	}
 }

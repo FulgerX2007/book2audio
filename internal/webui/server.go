@@ -171,6 +171,15 @@ type settingsJSON struct {
 	// KeySet tells whether the variable named by APIKeyEnv has a value in
 	// the environment of this server. The key itself never leaves it.
 	KeySet bool `json:"keySet"`
+
+	// The speech engine: "piper" or "silero", its command and arguments
+	// (separated by spaces). Piper without arguments downloads the voice of
+	// the audiobook's language.
+	TTSBackend string   `json:"ttsBackend"`
+	TTSCommand string   `json:"ttsCommand"`
+	TTSArgs    string   `json:"ttsArgs"`
+	Backends   []string `json:"backends"`  // the engines to choose from
+	AutoVoice  string   `json:"autoVoice"` // the Piper voice that would be downloaded, if any
 }
 
 func settingsOf(cfg config.Config) settingsJSON {
@@ -182,7 +191,21 @@ func settingsOf(cfg config.Config) settingsJSON {
 		BaseURL:    cfg.Translate.BaseURL,
 		APIKeyEnv:  cfg.Translate.APIKeyEnv,
 		KeySet:     cfg.Translate.APIKeyEnv != "" && os.Getenv(cfg.Translate.APIKeyEnv) != "",
+		TTSBackend: cfg.TTS.Backend,
+		TTSCommand: cfg.TTS.Command,
+		TTSArgs:    strings.Join(cfg.TTS.Args, " "),
+		Backends:   []string{config.BackendPiper, config.BackendSilero},
+		AutoVoice:  autoVoice(cfg),
 	}
+}
+
+// autoVoice names the Piper voice that the synth stage would download for
+// this config, or "" when it would not download one.
+func autoVoice(cfg config.Config) string {
+	if cfg.AutoVoice() {
+		return cfg.PiperVoice()
+	}
+	return ""
 }
 
 type detailJSON struct {
@@ -335,7 +358,18 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	source, target := strings.TrimSpace(req.SourceLang), strings.TrimSpace(req.TargetLang)
-	set := map[string]string{"source_lang": source}
+	set := map[string]any{"source_lang": source}
+	if backend := strings.TrimSpace(req.TTSBackend); backend != "" {
+		// A request without the speech fields leaves the engine as it is.
+		command := strings.TrimSpace(req.TTSCommand)
+		if command == "" {
+			writeError(w, http.StatusBadRequest, errors.New("name the command that runs the speech engine"))
+			return
+		}
+		set["tts.backend"] = backend
+		set["tts.command"] = command
+		set["tts.args"] = strings.Fields(req.TTSArgs)
+	}
 	if req.Translate {
 		model := strings.TrimSpace(req.Model)
 		probe := config.Default()
@@ -354,7 +388,10 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		set["target_lang"] = target
 		set["translate.model"] = model
-		set["translate.base_url"] = strings.TrimSpace(req.BaseURL)
+		// An empty address is never valid: it means "leave it as it is".
+		if base := strings.TrimSpace(req.BaseURL); base != "" {
+			set["translate.base_url"] = base
+		}
 		set["translate.api_key_env"] = strings.TrimSpace(req.APIKeyEnv)
 	} else {
 		// A book read in its own language; the model settings stay as they are.

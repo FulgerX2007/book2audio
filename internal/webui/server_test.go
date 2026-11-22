@@ -545,3 +545,46 @@ func TestSettingsErrors(t *testing.T) {
 	close(release)
 	f.wait("book")
 }
+
+func TestSpeechSettings(t *testing.T) {
+	f := newFixture(t)
+	f.upload("book.pdf", "")
+
+	var d detailJSON
+	f.json(http.MethodGet, "/api/books/book", nil, &d)
+	// The default: Piper without arguments, so the Russian voice would be downloaded.
+	if d.Settings.TTSBackend != config.BackendPiper || d.Settings.TTSCommand != "piper" || d.Settings.TTSArgs != "" ||
+		d.Settings.AutoVoice != "ru_RU-irina-medium" || len(d.Settings.Backends) != 2 {
+		t.Fatalf("settings = %+v", d.Settings)
+	}
+
+	var saved settingsJSON
+	status := f.json(http.MethodPost, "/api/books/book/settings", settingsJSON{
+		Translate: true, SourceLang: "en", TargetLang: "ru", Model: "m",
+		TTSBackend: config.BackendSilero, TTSCommand: " /opt/silero_tts.py ", TTSArgs: "--speaker   xenia",
+	}, &saved)
+	if status != http.StatusOK || saved.TTSBackend != config.BackendSilero || saved.TTSCommand != "/opt/silero_tts.py" ||
+		saved.TTSArgs != "--speaker xenia" || saved.AutoVoice != "" {
+		t.Fatalf("save: status %d, settings %+v", status, saved)
+	}
+	cfg, err := config.Load(filepath.Join(f.server.Workdir, "book", "config.yaml"))
+	if err != nil || len(cfg.TTS.Args) != 2 || cfg.TTS.Args[1] != "xenia" {
+		t.Errorf("tts in the config = %+v, %v", cfg.TTS, err)
+	}
+
+	// A request without the speech fields leaves the engine alone.
+	f.json(http.MethodPost, "/api/books/book/settings", settingsJSON{Translate: false, SourceLang: "en"}, &saved)
+	if saved.TTSBackend != config.BackendSilero || saved.TTSArgs != "--speaker xenia" {
+		t.Errorf("engine after a save without speech fields = %+v", saved)
+	}
+
+	var answer map[string]string
+	for name, req := range map[string]settingsJSON{
+		"unknown backend": {SourceLang: "en", TTSBackend: "robot", TTSCommand: "x"},
+		"no command":      {SourceLang: "en", TTSBackend: config.BackendPiper},
+	} {
+		if status := f.json(http.MethodPost, "/api/books/book/settings", req, &answer); status != http.StatusBadRequest {
+			t.Errorf("%s: status %d, %v", name, status, answer)
+		}
+	}
+}

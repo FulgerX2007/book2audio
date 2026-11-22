@@ -168,6 +168,10 @@
           <label>API address <input type="text" id="s-url" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false"></label>
           <label>Variable with the API key <input type="text" id="s-key" placeholder="B2A_API_KEY" autocomplete="off" spellcheck="false"></label>
           <div class="hint wide" id="s-keyhint"></div>
+          <label>Speech engine <select id="s-backend"></select></label>
+          <label>Engine command <input type="text" id="s-command" placeholder="piper" autocomplete="off" spellcheck="false"></label>
+          <label style="grid-column: span 2">Engine arguments <input type="text" id="s-args" placeholder="--speaker xenia" autocomplete="off" spellcheck="false"></label>
+          <div class="hint wide muted" id="s-ttshint"></div>
           <div class="actions wide">
             <button class="btn primary" id="s-save">Save</button>
             <span id="s-msg" role="status"></span>
@@ -429,6 +433,12 @@ function fillSettings(s) {
   $("s-model").value = s.model;
   $("s-url").value = s.baseUrl;
   $("s-key").value = s.apiKeyEnv;
+  const backend = $("s-backend");
+  backend.replaceChildren();
+  for (const name of s.backends) { const o = el("option", name); o.value = name; backend.append(o); }
+  backend.value = s.ttsBackend;
+  $("s-command").value = s.ttsCommand;
+  $("s-args").value = s.ttsArgs;
   syncSettings();
 }
 
@@ -436,6 +446,10 @@ function fillSettings(s) {
 function syncSettings() {
   const on = $("s-translate").checked;
   for (const id of ["s-target", "s-model", "s-url", "s-key"]) $(id).disabled = !on;
+  const silero = $("s-backend").value === "silero";
+  $("s-ttshint").textContent = silero
+    ? "silero: the command is the full path of scripts/silero_tts.py; arguments such as --speaker xenia. It reads Russian."
+    : "piper: with no arguments the voice of the audiobook's language is downloaded; or give --model <voice.onnx> --output_file {out}";
 }
 
 function showSettings(d, running) {
@@ -443,6 +457,7 @@ function showSettings(d, running) {
   $("setsum").textContent = s.translate
     ? "translate " + s.sourceLang + " → " + s.targetLang + " · model " + (s.model || "not set")
     : "no translation · read in " + s.sourceLang;
+  $("setsum").textContent += " · voice " + s.ttsBackend + (s.autoVoice ? " (" + s.autoVoice + ")" : "");
   $("setsum").className = "sum" + (s.translate && !s.model ? " bad" : "");
 
   const hint = $("s-keyhint");
@@ -461,6 +476,14 @@ function showSettings(d, running) {
   }
 }
 
+$("s-backend").onchange = () => {
+  // Each engine has its own usual command.
+  const command = $("s-command");
+  if ($("s-backend").value === "piper" && /silero/.test(command.value)) { command.value = "piper"; $("s-args").value = ""; }
+  if ($("s-backend").value === "silero" && command.value === "piper") { command.value = ""; $("s-args").value = "--speaker xenia"; }
+  syncSettings();
+};
+
 $("s-translate").onchange = () => {
   syncSettings();
   if ($("s-translate").checked && !$("s-target").value) $("s-target").value = "ru";
@@ -475,6 +498,7 @@ $("setform").onsubmit = async ev => {
       body: JSON.stringify({
         translate: $("s-translate").checked, sourceLang: $("s-source").value, targetLang: $("s-target").value,
         model: $("s-model").value, baseUrl: $("s-url").value, apiKeyEnv: $("s-key").value,
+        ttsBackend: $("s-backend").value, ttsCommand: $("s-command").value, ttsArgs: $("s-args").value,
       }),
     });
     fillSettings(saved);

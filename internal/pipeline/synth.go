@@ -152,6 +152,11 @@ func Synth(ctx context.Context, ws *workspace.Workspace, syn tts.Synthesizer, lo
 			if ctx.Err() != nil {
 				return ctx.Err() // interrupted, not a failure of this segment
 			}
+			if errors.Is(synthErr, execx.ErrToolNotFound) {
+				// The engine cannot run at all: every segment would fail the
+				// same way, so the stage stops instead of recording them.
+				return synthErr
+			}
 			log.Warn("segment not synthesised", "chapter", unit.Chapter, "err", synthErr, "text", preview(job.text))
 			mu.Lock()
 			res.Failed++
