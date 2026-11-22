@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>book2audio</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1f2328; --muted: #6b7280; --line: #e3e1da;
+    --accent: #2f6f5e; --accent-ink: #ffffff; --bad: #b3261e; --warn: #9a6700; --bar: #e9e7e0;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15171a; --panel: #1e2125; --ink: #e6e6e6; --muted: #9aa0a6; --line: #30343a;
+            --accent: #5fb49c; --accent-ink: #10201b; --bad: #f2867d; --warn: #e3b341; --bar: #2b2f35; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+  header span { color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 20px; padding: 20px; max-width: 1300px; margin: 0 auto; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 10px; }
+  h3 { font-size: 20px; margin: 0 0 2px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  ul.books { list-style: none; margin: 0 0 14px; padding: 0; }
+  ul.books li { padding: 9px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  ul.books li:hover { border-color: var(--line); }
+  ul.books li.sel { background: var(--bar); }
+  ul.books .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 3px; }
+  input[type=text], input[type=file], select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); font: inherit; }
+  button { padding: 8px 14px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .row > div { min-width: 130px; }
+  .check { display: flex; align-items: center; gap: 6px; color: var(--ink); margin: 0; }
+  .check input { width: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bar { height: 8px; background: var(--bar); border-radius: 4px; overflow: hidden; min-width: 90px; display: flex; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar i.f { background: var(--bad); }
+  .bad { color: var(--bad); }
+  .ok { color: var(--accent); }
+  section { margin-top: 18px; }
+  pre.log { background: var(--bar); border-radius: 8px; padding: 10px 12px; font: 12px/1.5 var(--mono); max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0; }
+  code { font: 13px var(--mono); word-break: break-all; }
+  .banner { padding: 9px 12px; border-radius: 8px; margin: 12px 0 0; font-size: 14px; border: 1px solid var(--line); }
+  .banner.bad { border-color: var(--bad); }
+  .scroll { overflow-x: auto; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>book2audio</h1>
+  <span>PDF to audiobook</span>
+</header>
+<main>
+  <aside>
+    <div class="panel">
+      <h2>Books</h2>
+      <ul class="books" id="books"></ul>
+      <p class="muted small" id="nobooks" hidden>No books yet. Add a PDF below.</p>
+    </div>
+    <div class="panel" style="margin-top:20px">
+      <h2>Add a book</h2>
+      <form id="add">
+        <label for="file">PDF file</label>
+        <input type="file" id="file" accept="application/pdf,.pdf">
+        <label for="path">or its path on this computer</label>
+        <input type="text" id="path" placeholder="/home/me/books/book.pdf" autocomplete="off">
+        <label for="slug">Folder name (optional)</label>
+        <input type="text" id="slug" placeholder="from the file name" autocomplete="off">
+        <div style="margin-top:12px"><button class="primary" id="addbtn">Add</button></div>
+        <p class="small bad" id="adderr" hidden></p>
+      </form>
+    </div>
+  </aside>
+
+  <div class="panel" id="detail">
+    <p class="muted" id="empty">Select a book to see its progress.</p>
+    <div id="book" hidden>
+      <h3 id="title"></h3>
+      <div class="muted small" id="meta"></div>
+
+      <section>
+        <div class="row">
+          <div><label for="from">From stage</label><select id="from"></select></div>
+          <div><label for="to">To stage</label><select id="to"></select></div>
+          <div><label class="check" title="Rebuild files that were edited by hand"><input type="checkbox" id="force"> Overwrite hand edits</label></div>
+          <div><button class="primary" id="run">Run</button> <button id="stop">Stop</button></div>
+        </div>
+        <div class="banner" id="state" hidden></div>
+      </section>
+
+      <section>
+        <h2>Stages</h2>
+        <div class="scroll"><table><thead><tr><th>Stage</th><th>Units</th><th>Done</th><th>Failed</th><th style="width:35%">Progress</th></tr></thead><tbody id="stages"></tbody></table></div>
+      </section>
+
+      <section id="outsec" hidden>
+        <h2>Audiobook</h2>
+        <div id="outputs"></div>
+      </section>
+
+      <section id="chsec" hidden>
+        <h2>Chapters</h2>
+        <div class="scroll"><table><thead><tr><th>No</th><th>Title</th><th>Translation</th><th>Speech</th><th>Audio</th></tr></thead><tbody id="chapters"></tbody></table></div>
+      </section>
+
+      <section id="failsec" hidden>
+        <h2>Failures</h2>
+        <div class="scroll"><table><thead><tr><th>Stage</th><th>Chapter</th><th>Error</th></tr></thead><tbody id="failures"></tbody></table></div>
+      </section>
+
+      <section id="editsec" hidden>
+        <h2>Edited by hand</h2>
+        <p class="muted small">These files are not overwritten unless "Overwrite hand edits" is checked.</p>
+        <div id="edited" class="small"></div>
+      </section>
+
+      <section id="logsec" hidden>
+        <h2>Log of the last run</h2>
+        <pre class="log" id="log"></pre>
+      </section>
+
+      <section>
+        <p class="muted small">Settings of this book: <code id="cfg"></code></p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const HEADER = {"X-Book2audio": "1"};
+let selected = location.hash.slice(1) || "";
+let stagesFilled = false;
+
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text !== undefined && text !== null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* no body */ }
+  if (!res.ok) throw new Error(body && body.error ? body.error : res.status + " " + res.statusText);
+  return body;
+}
+
+function bar(done, failed, total) {
+  const b = el("div", null, "bar");
+  if (total > 0) {
+    const d = el("i"); d.style.width = (100 * done / total) + "%"; b.append(d);
+    if (failed > 0) { const f = el("i", null, "f"); f.style.width = (100 * failed / total) + "%"; b.append(f); }
+  }
+  return b;
+}
+
+function progressCell(done, total, failed, complete) {
+  const td = el("td", null, "num");
+  if (total === 0) { td.textContent = complete ? "done" : "—"; if (complete) td.className = "num ok"; return td; }
+  td.textContent = done + "/" + total + (complete && failed === 0 ? " ✓" : "");
+  if (failed > 0) td.append(el("span", ", failed " + failed, "bad"));
+  else if (complete) td.className = "num ok";
+  return td;
+}
+
+async function loadBooks() {
+  let books;
+  try { books = await api("/api/books"); } catch (e) { return; }
+  const ul = $("books");
+  ul.replaceChildren();
+  $("nobooks").hidden = books.length > 0;
+  for (const b of books) {
+    const li = el("li");
+    if (b.slug === selected) li.className = "sel";
+    const t = el("div", null, "t");
+    if (b.running) t.append(el("span", null, "dot"));
+    t.append(document.createTextNode(b.title || b.slug));
+    li.append(t);
+    let done = 0, total = 0, failed = 0;
+    for (const s of b.stages) { done += s.done; total += s.total; failed += s.failed; }
+    const sub = el("div", b.error ? b.error : b.slug + (total ? " · " + done + "/" + total + " units" : ""), "muted small");
+    if (b.error || failed) sub.className = "small bad";
+    if (failed && !b.error) sub.textContent += " · " + failed + " failed";
+    li.append(sub);
+    li.onclick = () => select(b.slug);
+    ul.append(li);
+  }
+}
+
+function select(slug) {
+  selected = slug;
+  location.hash = slug;
+  stagesFilled = false;
+  refresh();
+}
+
+async function loadDetail() {
+  if (!selected) { $("book").hidden = true; $("empty").hidden = false; return; }
+  let d;
+  try { d = await api("/api/books/" + encodeURIComponent(selected)); }
+  catch (e) { $("book").hidden = true; $("empty").hidden = false; $("empty").textContent = e.message; return; }
+  $("empty").hidden = true; $("book").hidden = false;
+
+  $("title").textContent = d.title || d.slug;
+  const meta = [];
+  if (d.author) meta.push(d.author);
+  if (d.pages) meta.push(d.pages + " pages");
+  meta.push(d.sourceLang + " → " + d.targetLang);
+  meta.push(d.dir);
+  $("meta").textContent = meta.join(" · ");
+  $("cfg").textContent = d.configPath;
+
+  if (!stagesFilled) {
+    for (const id of ["from", "to"]) {
+      const sel = $(id); sel.replaceChildren();
+      const first = el("option", id === "from" ? "the first stage" : "the last stage"); first.value = ""; sel.append(first);
+      for (const s of d.allStages) { const o = el("option", s); o.value = s; sel.append(o); }
+    }
+    stagesFilled = true;
+  }
+
+  const running = d.job && d.job.running;
+  $("run").disabled = running; $("stop").disabled = !running;
+  const state = $("state");
+  state.className = "banner"; state.hidden = !d.job;
+  if (d.job) {
+    const range = (d.job.from || d.allStages[0]) + " → " + (d.job.to || d.allStages[d.allStages.length - 1]);
+    if (running) { state.replaceChildren(el("span", null, "dot"), document.createTextNode("Running " + range)); }
+    else if (d.job.stopped) state.textContent = "Stopped. Run again to continue: finished work is kept.";
+    else if (d.job.error) { state.textContent = "The last run ended with an error: " + d.job.error; state.className = "banner bad"; }
+    else state.textContent = "The last run finished (" + range + ").";
+  }
+
+  const stages = $("stages"); stages.replaceChildren();
+  for (const s of d.stages) {
+    const tr = el("tr");
+    tr.append(el("td", s.name), el("td", s.units, "muted"), el("td", s.done + "/" + s.total, "num"),
+      el("td", String(s.failed), s.failed ? "num bad" : "num"));
+    const td = el("td"); td.append(bar(s.done, s.failed, s.total)); tr.append(td);
+    stages.append(tr);
+  }
+
+  $("outsec").hidden = d.outputs.length === 0;
+  const outs = $("outputs"); outs.replaceChildren();
+  for (const name of d.outputs) {
+    const p = el("div");
+    const a = el("a", name); a.href = "/api/books/" + encodeURIComponent(d.slug) + "/out/" + encodeURIComponent(name);
+    p.append(a); outs.append(p);
+  }
+
+  $("chsec").hidden = d.chapters.length === 0;
+  const chs = $("chapters"); chs.replaceChildren();
+  for (const c of d.chapters) {
+    const tr = el("tr");
+    tr.append(el("td", String(c.n), "num"), el("td", c.title),
+      progressCell(c.chunksDone, c.chunks, c.chunksFailed, c.translated),
+      progressCell(c.segmentsDone, c.segments, c.segmentsFailed, c.segments > 0 && c.segmentsDone === c.segments),
+      el("td", c.audio ? "✓" : "—", c.audio ? "ok" : "muted"));
+    chs.append(tr);
+  }
+
+  $("failsec").hidden = d.failures.length === 0;
+  const fails = $("failures"); fails.replaceChildren();
+  for (const f of d.failures) {
+    const tr = el("tr");
+    const td = el("td", f.error);
+    if (f.out) { td.append(el("div", "a result can be supplied by hand at:", "muted small")); td.append(el("code", f.out)); }
+    tr.append(el("td", f.stage), el("td", f.chapter || "—"), td);
+    fails.append(tr);
+  }
+
+  $("editsec").hidden = d.edited.length === 0;
+  const ed = $("edited"); ed.replaceChildren();
+  for (const path of d.edited) { const p = el("div"); p.append(el("code", path)); ed.append(p); }
+
+  const log = $("log");
+  $("logsec").hidden = !d.job || d.job.log.length === 0;
+  if (d.job) {
+    const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+    log.textContent = d.job.log.join("\n");
+    if (atEnd) log.scrollTop = log.scrollHeight;
+  }
+}
+
+async function refresh() { await Promise.all([loadBooks(), loadDetail()]); }
+
+$("run").onclick = async () => {
+  try {
+    await api("/api/books/" + encodeURIComponent(selected) + "/run", {
+      method: "POST", headers: {...HEADER, "Content-Type": "application/json"},
+      body: JSON.stringify({from: $("from").value, to: $("to").value, force: $("force").checked}),
+    });
+    $("force").checked = false;
+  } catch (e) { const s = $("state"); s.hidden = false; s.className = "banner bad"; s.textContent = e.message; return; }
+  refresh();
+};
+
+$("stop").onclick = async () => {
+  try { await api("/api/books/" + encodeURIComponent(selected) + "/stop", {method: "POST", headers: HEADER}); } catch (e) { /* shown by the next refresh */ }
+  refresh();
+};
+
+$("add").onsubmit = async ev => {
+  ev.preventDefault();
+  const err = $("adderr"); err.hidden = true;
+  const form = new FormData();
+  if ($("file").files.length) form.append("file", $("file").files[0]);
+  form.append("path", $("path").value);
+  form.append("slug", $("slug").value);
+  $("addbtn").disabled = true;
+  try {
+    const res = await api("/api/books", {method: "POST", headers: HEADER, body: form});
+    $("add").reset();
+    select(res.slug);
+  } catch (e) { err.textContent = e.message; err.hidden = false; }
+  $("addbtn").disabled = false;
+};
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

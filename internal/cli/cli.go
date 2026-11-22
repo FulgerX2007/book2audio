@@ -9,13 +9,17 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/FulgerX2007/book2audio/internal/chapters"
+	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/extract"
 	"github.com/FulgerX2007/book2audio/internal/pipeline"
+	"github.com/FulgerX2007/book2audio/internal/webui"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
 
@@ -241,6 +245,7 @@ func Builtin(deps Deps) []Command {
 		{Name: "build", Args: book, Summary: "build the audiobook (M4B or MP3)", Setup: setupBuild(deps)},
 		{Name: "run", Args: book, Summary: "run all stages in order", Setup: setupRun(deps)},
 		{Name: "status", Args: book, Summary: "show the state of the book by stage", Setup: setupStatus},
+		{Name: "ui", Args: "[--addr host:port]", Summary: "open the browser interface for the books of a working directory", Setup: setupUI(deps)},
 	}
 }
 
@@ -428,6 +433,52 @@ func setupStatus(*flag.FlagSet) RunFunc {
 		st.Write(inv.Stdout)
 		return nil
 	}
+}
+
+// setupUI is the Setup of "ui".
+func setupUI(deps Deps) func(*flag.FlagSet) RunFunc {
+	return func(fs *flag.FlagSet) RunFunc {
+		addr := fs.String("addr", "127.0.0.1:8080", "address to listen on")
+		return func(ctx context.Context, inv *Invocation) error {
+			if len(inv.Args) != 0 {
+				return &UsageError{Msg: "ui takes no arguments; choose the books directory with --workdir"}
+			}
+			workdir, err := uiWorkdir(inv)
+			if err != nil {
+				return err
+			}
+			ln, err := net.Listen("tcp", *addr)
+			if err != nil {
+				return fmt.Errorf("ui: %w", err)
+			}
+			server := &webui.Server{Workdir: workdir, ConfigPath: inv.ConfigPath, Deps: deps, Log: inv.Log}
+			// Requests must be addressed to localhost unless the user chose
+			// to listen on another address.
+			if tcp, ok := ln.Addr().(*net.TCPAddr); ok && !tcp.IP.IsLoopback() {
+				server.AnyHost = true
+				fmt.Fprintln(inv.Stderr, "Warning: the interface is reachable from other computers and has no password.")
+			}
+			fmt.Fprintf(inv.Stdout, "Books directory: %s\nOpen http://%s in a browser. Press Ctrl-C to stop.\n", workdir, ln.Addr())
+			return server.Serve(ctx, ln)
+		}
+	}
+}
+
+// uiWorkdir returns the absolute directory whose books the interface
+// shows: --workdir, or the workdir of the config.
+func uiWorkdir(inv *Invocation) (string, error) {
+	workdir := inv.Workdir
+	if workdir == "" {
+		cfg := config.Default()
+		if inv.ConfigPath != "" {
+			var err error
+			if cfg, err = config.Load(inv.ConfigPath); err != nil {
+				return "", err
+			}
+		}
+		workdir = cfg.Workdir
+	}
+	return filepath.Abs(workdir)
 }
 
 // openBook opens and locks the working folder named by the single

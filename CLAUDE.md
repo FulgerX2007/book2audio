@@ -33,6 +33,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 | `scripts/` | `silero_tts.py`, the engine side of the Silero backend |
 | `internal/audio` | PCM WAV, joining, chapter metadata, ffmpeg encoding |
 | `internal/pipeline` | stages 3–5 (`translate`, `synth`, `build`), `run`, `status` |
+| `internal/webui` | `ui`: HTTP API and the embedded page (`index.html`), background runs |
 | `internal/testdata` | PDF fixtures (`gen.sh`), shared through `go:embed` |
 
 ## Rules
@@ -40,6 +41,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 - **Language.** Everything is in English: code comments, commit messages, CLI output, errors, log messages, README and the example config. The only Russian strings are content of a Russian audiobook: `chapters.IntroTitle`, the fallback section titles and `speech.URLWord`; `chapters.Titles` and `speech.URLWordFor` choose them by `target_lang`.
 - **Same language.** When `Config.SameLanguage()` holds, the translate stage uses `translate.Passthrough` and needs no model settings; get the translator from `Deps.Translator`, not from `NewTranslator` directly.
 - **Piper voices.** With `Config.AutoVoice()` (Piper, no `tts.args`) `Deps.Synthesizer` fetches the voice through `Deps.FetchVoice` and writes the arguments into `ws.Config` before the synth stage hashes them. Create the synthesizer through `Deps.Synthesizer`; tests set `FetchVoice` and never reach the network.
+- **Browser interface.** `webui.Server` reads a book without the lock and runs the pipeline in a background job that takes it. Every request that changes something must carry the `X-Book2audio` header and, unless `AnyHost` is set, be addressed to localhost: keep both checks when adding a route. The page builds its DOM with `textContent`, never with HTML from the server.
 - **External tools** are run only through `execx.Runner`. Unit tests use `execx.FakeRunner`; tests with real tools skip themselves when the tool is missing.
 - **Backends** are created by a factory (`translate.New`, `tts.New`) and injected through `pipeline.Deps`. Tests use `translate.FakeTranslator` and `tts.FakeSynthesizer`, which count their calls — assert on the calls to prove that work was *not* repeated.
 - **Speech backends.** An engine that is expensive to start implements `tts.BatchSynthesizer`; the synth stage then gives each worker one batch instead of one segment. A per-segment error is returned in the slice and recorded as a failed unit; an engine that cannot run at all is a fatal error.

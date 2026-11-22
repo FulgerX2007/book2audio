@@ -6,12 +6,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/execx"
@@ -37,7 +41,7 @@ func capture(got **Invocation) func(*flag.FlagSet) RunFunc {
 }
 
 func TestBuiltinCommands(t *testing.T) {
-	want := []string{"init", "extract", "chapters", "translate", "synth", "build", "run", "status"}
+	want := []string{"init", "extract", "chapters", "translate", "synth", "build", "run", "status", "ui"}
 
 	var got []string
 	for _, cmd := range Builtin(DefaultDeps()) {
@@ -651,4 +655,109 @@ func TestRunCommandInitialisesANewBook(t *testing.T) {
 	if code := app.Run(context.Background(), []string{"run", filepath.Join(workdir, "absent.pdf")}); code != ExitError {
 		t.Errorf("run of a missing PDF: exit code = %d, want %d", code, ExitError)
 	}
+}
+
+func TestUICommand(t *testing.T) {
+	t.Run("takes no arguments", func(t *testing.T) {
+		code, _, stderr := runBuiltin("ui", "book.pdf")
+		if code != ExitUsage || !strings.Contains(stderr, "--workdir") {
+			t.Errorf("exit code = %d, stderr:\n%s\nwant a usage error that names --workdir", code, stderr)
+		}
+	})
+	t.Run("an address that cannot be opened is an error", func(t *testing.T) {
+		code, _, stderr := runBuiltin("ui", "--workdir", t.TempDir(), "--addr", "256.0.0.1:1")
+		if code != ExitError || !strings.Contains(stderr, "ui:") {
+			t.Errorf("exit code = %d, stderr:\n%s", code, stderr)
+		}
+	})
+	t.Run("serves the books directory until it is cancelled", func(t *testing.T) {
+		workdir := t.TempDir()
+		// The test reads the output while the command is still running.
+		stdout, stderr := &syncBuffer{}, &syncBuffer{}
+		app := &App{Commands: Builtin(Deps{}), Stdout: stdout, Stderr: stderr}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan int, 1)
+		go func() { done <- app.Run(ctx, []string{"ui", "--workdir", workdir, "--addr", "127.0.0.1:0"}) }()
+
+		// The address is printed once the server listens.
+		var url string
+		for deadline := time.Now().Add(10 * time.Second); url == "" && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			if _, rest, ok := strings.Cut(stdout.String(), "Open "); ok {
+				url, _, _ = strings.Cut(rest, " ")
+			}
+		}
+		if url == "" {
+			cancel()
+			t.Fatalf("the address was not printed; stdout:\n%s\nstderr:\n%s", stdout, stderr)
+		}
+		res, err := http.Get(url + "/api/books")
+		if err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK || strings.TrimSpace(string(body)) != "[]" {
+			t.Errorf("GET /api/books: status %d, body %q", res.StatusCode, body)
+		}
+
+		cancel()
+		select {
+		case code := <-done:
+			if code != ExitOK {
+				t.Errorf("exit code = %d, stderr:\n%s", code, stderr)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("ui did not stop after the context was cancelled")
+		}
+		if !strings.Contains(stdout.String(), workdir) {
+			t.Errorf("stdout does not name the books directory:\n%s", stdout)
+		}
+	})
+}
+
+func TestUIWorkdir(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cfg := filepath.Join(dir, "cfg.yaml")
+	os.WriteFile(cfg, []byte("workdir: shelf\n"), 0o644)
+	tests := []struct {
+		name string
+		inv  Invocation
+		want string
+	}{
+		{"--workdir wins", Invocation{Options: Options{Workdir: "mine", ConfigPath: cfg}}, filepath.Join(dir, "mine")},
+		{"from the config", Invocation{Options: Options{ConfigPath: cfg}}, filepath.Join(dir, "shelf")},
+		{"the default", Invocation{}, filepath.Join(dir, "work")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := uiWorkdir(&tt.inv)
+			if err != nil || got != tt.want {
+				t.Errorf("uiWorkdir = %q, %v; want %q", got, err, tt.want)
+			}
+		})
+	}
+	if _, err := uiWorkdir(&Invocation{Options: Options{ConfigPath: filepath.Join(dir, "missing.yaml")}}); err == nil {
+		t.Error("a missing config was accepted")
+	}
+}
+
+// syncBuffer is a buffer that can be written and read from different
+// goroutines.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

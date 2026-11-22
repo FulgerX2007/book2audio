@@ -45,6 +45,7 @@ The result is `work/book/out/book.m4b`. `run` can be interrupted and started aga
 book2audio init <book.pdf> [--config cfg.yaml] [--workdir work] [--slug name]
 book2audio <extract|chapters|translate|synth|build|status> <book.pdf | work/<slug>>
 book2audio run <book.pdf | work/<slug>> [--from stage] [--to stage]
+book2audio ui [--workdir work] [--addr 127.0.0.1:8080]
 ```
 
 | Command | What it does |
@@ -57,10 +58,28 @@ book2audio run <book.pdf | work/<slug>> [--from stage] [--to stage]
 | `build` | joins the chapter audio and encodes the audiobook |
 | `run` | all stages in order; `--from` and `--to` limit them |
 | `status` | progress by stage and by chapter, failures, files edited by hand |
+| `ui` | the same in a browser, with buttons to add a book, run and stop |
 
 Common flags: `--config` (a config for one run), `--workdir`, `--force`, `-v`. Flags may be written before or after the book path.
 
 One process works on a book at a time: a second run on the same folder fails. The exception is `status`: it only reads, so it works while the book is being processed in another window. For each chapter it shows how many chunks are translated and how many segments are synthesised out of the total, for example `7/12`. Translation and speech do not go page by page: chapters are cut into chunks of `translate.chunk_chars` characters, so progress is counted in chunks.
+
+## Browser interface
+
+```sh
+book2audio ui --workdir ../books
+```
+
+It prints an address, by default `http://127.0.0.1:8080`; open it in a browser. From WSL the same address works in a browser on Windows. The page shows:
+
+- the books of the directory, with the ones being processed marked;
+- a form to add a book: upload a PDF or give its path on the computer;
+- for a book: progress by stage and by chapter, failures, files edited by hand, the log of the last run and the finished audiobook to download;
+- **Run** and **Stop**, with the first and the last stage to run. A stopped run keeps its finished work, like Ctrl-C.
+
+`--config` names the config that is copied into books added from the page; `--addr` changes the address. Settings, the glossary and the chapter texts are still edited as files.
+
+The interface has no password. It listens on this computer only and refuses requests that do not come from its own page. If you choose an address that other computers can reach (`--addr 0.0.0.0:8080`), anyone on that network can start runs and download the audio.
 
 ## Working folder
 
