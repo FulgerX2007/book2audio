@@ -326,3 +326,38 @@ func TestOpenAISendsExtraHeaders(t *testing.T) {
 		t.Errorf("Authorization = %q, want the key to be sent as well", gotAuth)
 	}
 }
+
+func TestOpenAIUnauthorizedWithoutKeyNamesTheVariable(t *testing.T) {
+	tests := []struct {
+		name     string
+		key      string
+		wantHint bool
+	}{
+		{"variable is empty", "", true},
+		{"key was sent and rejected", "wrong-key", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+				io.WriteString(w, `{"error":{"message":"bad key"}}`)
+			}))
+			defer srv.Close()
+
+			t.Setenv("B2A_TEST_401_KEY", tt.key)
+			cfg := config.Default().Translate
+			cfg.BaseURL, cfg.Model, cfg.APIKeyEnv = srv.URL, "m", "B2A_TEST_401_KEY"
+			o, err := NewOpenAI(cfg)
+			if err != nil {
+				t.Fatalf("NewOpenAI: %v", err)
+			}
+			_, err = o.Translate(context.Background(), sampleRequest)
+			if err == nil || !strings.Contains(err.Error(), "401") {
+				t.Fatalf("Translate error = %v, want a 401 error", err)
+			}
+			if got := strings.Contains(err.Error(), "export B2A_TEST_401_KEY="); got != tt.wantHint {
+				t.Errorf("hint present = %v, want %v: %v", got, tt.wantHint, err)
+			}
+		})
+	}
+}

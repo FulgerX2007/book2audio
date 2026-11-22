@@ -33,6 +33,7 @@ type OpenAI struct {
 	url         string
 	model       string
 	apiKey      string
+	apiKeyEnv   string // name of the variable the key was read from
 	temperature float64
 	maxRetries  int
 	headers     map[string]string // extra request headers from translate.headers
@@ -58,6 +59,7 @@ func NewOpenAI(cfg config.Translate) (*OpenAI, error) {
 		url:         strings.TrimRight(cfg.BaseURL, "/") + "/chat/completions",
 		model:       cfg.Model,
 		apiKey:      key,
+		apiKeyEnv:   cfg.APIKeyEnv,
 		temperature: cfg.Temperature,
 		maxRetries:  cfg.MaxRetries,
 		headers:     cfg.Headers,
@@ -164,6 +166,10 @@ func (o *OpenAI) send(ctx context.Context, body []byte) (string, error) {
 			resp.StatusCode == http.StatusTooManyRequests,
 			resp.StatusCode >= 500:
 			return "", &retryable{err: err, after: retryAfter(resp.Header.Get("Retry-After"))}
+		case resp.StatusCode == http.StatusUnauthorized && o.apiKey == "" && o.apiKeyEnv != "":
+			// The usual cause: the variable is set in the shell but not exported.
+			return "", fmt.Errorf("%w (no key was sent: the environment variable %s is empty; set it with: export %s=...)",
+				err, o.apiKeyEnv, o.apiKeyEnv)
 		}
 		return "", err
 	}
