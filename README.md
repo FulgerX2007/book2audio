@@ -143,4 +143,5 @@ The tool's messages, log and errors are in English. Text that ends up in the aud
 - Chapters are found with `chapters.heading_regex` (by default `Chapter N`, `Глава N`). If the book's headings look different, for example all capitals, set your own pattern: otherwise the text is split into sections of `fallback_pages` pages.
 - Stress is placed by the speech engine; Piper may misread homographs ("го́лоса" and "голоса́"). An external stress command fixes that, see above.
 - Piper starts a separate process for every segment; Silero starts once per batch.
+- Silero reads only Russian text. A segment without a single Cyrillic letter (a reference list or a title left in the source language) becomes a short silence instead of a failure.
 - The working folder lock works on Linux and macOS.
