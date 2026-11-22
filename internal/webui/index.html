@@ -225,6 +225,8 @@ let selected = decodeURIComponent(location.hash.slice(1)) || "";
 const UNITS = {extract: "pages", chapters: "files", translate: "chunks", synth: "segments", build: "files"};
 let stagesFor = "";      // the book whose stage lists fill the selects
 let settingsFor = "";   // the book whose settings fill the form
+let shownBook = "";     // the book whose details are on the screen
+let readErrors = 0;     // failed reads of it in a row
 let retryFrom = "";      // the stage "Retry failed" starts from
 
 function el(tag, text, cls) {
@@ -317,7 +319,13 @@ async function loadDetail() {
   if (!selected) { $("book").hidden = true; $("empty").hidden = false; return; }
   let d;
   try { d = await api("/api/books/" + encodeURIComponent(selected)); }
-  catch (e) { $("book").hidden = true; $("empty").hidden = false; $("empty").textContent = e.message; return; }
+  catch (e) {
+    // A book that is already on the screen stays there: one failed read
+    // must not blank the page while a run is rewriting the book's files.
+    if (shownBook === selected && ++readErrors < 5) return;
+    $("book").hidden = true; $("empty").hidden = false; $("empty").textContent = e.message; return;
+  }
+  shownBook = d.slug; readErrors = 0;
   $("empty").hidden = true; $("book").hidden = false;
 
   $("title").textContent = d.title || d.slug;

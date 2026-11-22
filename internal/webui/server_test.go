@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
@@ -586,5 +588,35 @@ func TestSpeechSettings(t *testing.T) {
 		if status := f.json(http.MethodPost, "/api/books/book/settings", req, &answer); status != http.StatusBadRequest {
 			t.Errorf("%s: status %d, %v", name, status, answer)
 		}
+	}
+}
+
+func TestRetry(t *testing.T) {
+	transient := errors.New("no data available")
+	tests := []struct {
+		name      string
+		errs      []error // returned by the calls, in order; then nil
+		wantCalls int
+		wantErr   error
+	}{
+		{"first try succeeds", nil, 1, nil},
+		{"a transient error is tried again", []error{transient, transient}, 3, nil},
+		{"gives up after the last attempt", []error{transient, transient, transient, transient}, 4, transient},
+		{"a missing book is not tried again", []error{fs.ErrNotExist}, 1, fs.ErrNotExist},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			err := retry(4, time.Millisecond, func() error {
+				calls++
+				if calls <= len(tt.errs) {
+					return tt.errs[calls-1]
+				}
+				return nil
+			})
+			if calls != tt.wantCalls || !errors.Is(err, tt.wantErr) || (tt.wantErr == nil && err != nil) {
+				t.Errorf("calls = %d, err = %v; want %d calls and %v", calls, err, tt.wantCalls, tt.wantErr)
+			}
+		})
 	}
 }

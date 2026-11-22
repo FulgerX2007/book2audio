@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/pipeline"
@@ -524,13 +525,42 @@ func (s *Server) slug(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 // read opens a book without locking it and reads its state. That is safe
 // while a run is in progress: the manifest is replaced atomically.
+//
+// On some file systems it is not quite atomic for a reader: on a Windows
+// drive mounted in WSL a read that meets the replacement fails ("no data
+// available") or sees half a file. Such a read is simply tried again.
 func (s *Server) read(slug string) (*workspace.Workspace, pipeline.Status, error) {
-	ws, err := workspace.Open(filepath.Join(s.Workdir, slug), workspace.OpenOptions{})
-	if err != nil {
-		return nil, pipeline.Status{}, err
-	}
-	st, err := pipeline.ReadStatus(ws)
+	var ws *workspace.Workspace
+	var st pipeline.Status
+	err := retry(readAttempts, readDelay, func() error {
+		var err error
+		if ws, err = workspace.Open(filepath.Join(s.Workdir, slug), workspace.OpenOptions{}); err != nil {
+			return err
+		}
+		st, err = pipeline.ReadStatus(ws)
+		return err
+	})
 	return ws, st, err
+}
+
+const (
+	readAttempts = 6
+	readDelay    = 40 * time.Millisecond
+)
+
+// retry calls fn until it succeeds, up to attempts times with a pause in
+// between. A book that does not exist is not worth another try.
+func retry(attempts int, delay time.Duration, fn func() error) error {
+	var err error
+	for i := range attempts {
+		if i > 0 {
+			time.Sleep(delay)
+		}
+		if err = fn(); err == nil || statusOf(err) == http.StatusNotFound {
+			return err
+		}
+	}
+	return err
 }
 
 func (s *Server) book(slug string, ws *workspace.Workspace, st pipeline.Status) bookJSON {
