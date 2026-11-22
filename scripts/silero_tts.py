@@ -24,6 +24,7 @@ import wave
 
 SPEAKABLE = re.compile(r"[\u0400-\u04FF]")
 SILENCE_SECONDS = 0.3
+MAX_UNKNOWN_SYMBOLS = 30
 
 
 def speakable(text):
@@ -39,6 +40,26 @@ def write_wav(out, pcm, sample_rate):
         w.setframerate(sample_rate)
         w.writeframes(pcm)
     os.replace(tmp, out)
+
+
+def speak(apply_tts, text):
+    """Synthesises text, dropping the characters the model does not know.
+
+    Silero raises KeyError with the offending character for a symbol that is
+    not in its alphabet ("^", "|", ...). Such a symbol has no sound: it is
+    replaced with a space and the text is tried again.
+    """
+    for _ in range(MAX_UNKNOWN_SYMBOLS):
+        try:
+            return apply_tts(text)
+        except KeyError as exc:
+            symbol = exc.args[0] if exc.args else None
+            if not isinstance(symbol, str) or len(symbol) != 1 or symbol not in text:
+                raise
+            text = text.replace(symbol, " ")
+            if not speakable(text):
+                raise ValueError("nothing to read after dropping unknown symbols") from exc
+    return apply_tts(text)
 
 
 def main():
@@ -67,9 +88,12 @@ def main():
                 write_wav(out, bytes(2 * int(args.sample_rate * SILENCE_SECONDS)), args.sample_rate)
                 print("ok", flush=True)
                 continue
-            audio = model.apply_tts(
-                text=text, speaker=args.speaker, sample_rate=args.sample_rate,
-                put_accent=True, put_yo=True, put_stress_homo=True, put_yo_homo=True,
+            audio = speak(
+                lambda t: model.apply_tts(
+                    text=t, speaker=args.speaker, sample_rate=args.sample_rate,
+                    put_accent=True, put_yo=True, put_stress_homo=True, put_yo_homo=True,
+                ),
+                text,
             )
             pcm = (audio.clamp(-1, 1) * 32767).to(torch.int16).cpu().numpy().tobytes()
             write_wav(out, pcm, args.sample_rate)
