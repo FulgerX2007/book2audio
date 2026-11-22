@@ -34,11 +34,11 @@ var indexHTML []byte
 // server never answers, so such a page cannot start a run or upload a file.
 const RequestHeader = "X-Book2audio"
 
-// uploadsDir is the folder inside the working directory where uploaded PDF
-// files are kept.
+// uploadsDir is the folder inside the working directory where uploaded
+// books are kept.
 const uploadsDir = "_pdf"
 
-// maxUpload limits the size of an uploaded PDF.
+// maxUpload limits the size of an uploaded book.
 const maxUpload = 2 << 30
 
 // Server is the browser interface over one working directory.
@@ -307,7 +307,7 @@ func (s *Server) addBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pdf == "" {
-		writeError(w, http.StatusBadRequest, errors.New("choose a PDF file or give its path on this computer"))
+		writeError(w, http.StatusBadRequest, errors.New("choose a PDF or EPUB file or give its path on this computer"))
 		return
 	}
 
@@ -320,12 +320,12 @@ func (s *Server) addBook(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"slug": filepath.Base(ws.Dir), "configPath": ws.ConfigPath()})
 }
 
-// saveUpload stores an uploaded PDF in the working directory and returns its
+// saveUpload stores an uploaded book in the working directory and returns its
 // path. The file appears under its name only when it is complete.
 func (s *Server) saveUpload(src io.Reader, name string) (string, error) {
 	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
-	if !strings.EqualFold(filepath.Ext(name), ".pdf") || strings.HasPrefix(name, ".") {
-		return "", fmt.Errorf("upload: %q is not a PDF file", name)
+	if ext := strings.ToLower(filepath.Ext(name)); (ext != ".pdf" && ext != ".epub") || strings.HasPrefix(name, ".") {
+		return "", fmt.Errorf("upload: %q is not a PDF or EPUB file", name)
 	}
 	dir := filepath.Join(s.Workdir, uploadsDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {

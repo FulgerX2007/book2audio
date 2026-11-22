@@ -114,9 +114,9 @@
       <ul class="books" id="books"></ul>
       <p class="muted" id="nobooks" hidden>No books yet.</p>
     </div>
-    <button type="button" class="btn dashed" id="addtoggle" aria-expanded="false" aria-controls="add">+ Add a PDF</button>
+    <button type="button" class="btn dashed" id="addtoggle" aria-expanded="false" aria-controls="add">+ Add a book</button>
     <form id="add" hidden>
-      <label>PDF file <input type="file" id="file" accept="application/pdf,.pdf"></label>
+      <label>PDF or EPUB file <input type="file" id="file" accept="application/pdf,application/epub+zip,.pdf,.epub"></label>
       <label>or its path on this computer <input type="text" id="path" placeholder="/home/me/books/book.pdf" autocomplete="off"></label>
       <label>Folder name (optional) <input type="text" id="slug" placeholder="from the file name" autocomplete="off"></label>
       <button class="btn primary" id="addbtn">Add</button>
@@ -126,7 +126,7 @@
   </nav>
 
   <main>
-    <p class="empty" id="empty">Select a book, or add a PDF.</p>
+    <p class="empty" id="empty">Select a book, or add a PDF or an EPUB.</p>
     <div id="book" hidden style="display: flex; flex-direction: column; gap: 22px">
       <header>
         <div style="min-width: 0">
@@ -287,7 +287,7 @@ async function loadDetail() {
   $("title").textContent = d.title || d.slug;
   const meta = [];
   if (d.author) meta.push(d.author);
-  if (d.pages) meta.push(d.pages + " pages");
+  if (d.pages) meta.push(d.pages + (/\.epub$/i.test(d.pdf) ? " documents" : " pages"));
   meta.push(d.sourceLang + " → " + d.targetLang, d.dir);
   $("meta").textContent = meta.join(" · ");
   $("cfg").textContent = d.configPath;

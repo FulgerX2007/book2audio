@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/FulgerX2007/book2audio/internal/clean"
+	"github.com/FulgerX2007/book2audio/internal/epub"
 	"github.com/FulgerX2007/book2audio/internal/extract"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
 )
@@ -58,12 +59,28 @@ func Run(ctx context.Context, ws *workspace.Workspace, log *slog.Logger) (Result
 	// the translate stage turns into the target language.
 	opt.IntroTitle, opt.SectionTitle = Titles(ws.Config.TargetPrimary())
 
-	pages := clean.Pages(raw)
-	detected, toc := Detect(pages, opt)
+	// An EPUB already knows its chapters and paragraphs: nothing is cleaned
+	// or guessed from the shape of the lines.
+	fromEPUB := epub.IsEPUB(ws.PDF)
+	var (
+		pages    [][]clean.Line
+		detected []Start
+		toc      map[int]bool
+	)
+	if fromEPUB {
+		pages = clean.PlainPages(raw)
+		detected = marked(pages, opt)
+	} else {
+		pages = clean.Pages(raw)
+		detected, toc = Detect(pages, opt)
+	}
 	res := Result{TOCPages: len(toc)}
 
 	indexIn := workspace.HashStrings(Stage, clean.RulesVersion, pagesHash, opt.Heading.String(),
 		strconv.Itoa(opt.MaxChars), strconv.Itoa(opt.TOCMax), strconv.Itoa(opt.FallbackPages))
+	if fromEPUB {
+		indexIn = workspace.HashStrings(indexIn, "epub")
+	}
 	if opt.IntroTitle != IntroTitle {
 		// The generated titles enter the hash only when they differ from the
 		// Russian ones, so the index of an existing Russian book stays valid.
@@ -85,6 +102,11 @@ func Run(ctx context.Context, ws *workspace.Workspace, log *slog.Logger) (Result
 		keep = append(keep, id)
 
 		in := workspace.HashStrings(Stage, clean.RulesVersion, start.Title, sourceText(lines))
+		paragraphs := body
+		if fromEPUB {
+			in = workspace.HashStrings(in, "epub")
+			paragraphs = plainBody
+		}
 		need, err := ws.Manifest.NeedsWork(Stage, id, in)
 		if err != nil {
 			return res, err
@@ -107,7 +129,7 @@ func Run(ctx context.Context, ws *workspace.Workspace, log *slog.Logger) (Result
 			res.Kept++
 			continue
 		}
-		if err := workspace.WriteFileAtomic(out, []byte(Format(start.Title, body(lines, start, opt))), 0o644); err != nil {
+		if err := workspace.WriteFileAtomic(out, []byte(Format(start.Title, paragraphs(lines, start, opt))), 0o644); err != nil {
 			return res, err
 		}
 		if err := ws.Manifest.MarkDone(Stage, id, workspace.Unit{In: in}, out); err != nil {
@@ -237,6 +259,57 @@ func body(lines []clean.Line, start Start, opt Options) []string {
 		}
 	}
 	return clean.Paragraphs(lines)
+}
+
+// marked returns the chapter starts of a book read from an EPUB: every page
+// whose first line carries extract.ChapterMark begins a chapter. Text
+// before the first of them is chapter 0; a book without any mark is split
+// into one section per page that has text.
+func marked(pages [][]clean.Line, opt Options) []Start {
+	intro, section := opt.titles()
+	var starts []Start
+	var before *clean.Line // the first line of text ahead of the first chapter
+	n := 0
+	for _, lines := range pages {
+		if len(lines) == 0 {
+			continue
+		}
+		first := lines[0]
+		if title, ok := strings.CutPrefix(first.Text, extract.ChapterMark); ok {
+			n++
+			starts = append(starts, Start{N: n, Title: clean.Normalize(title), StartPage: first.Page, StartLine: first.Num})
+		} else if n == 0 && before == nil {
+			before = &first
+		}
+	}
+	switch {
+	case len(starts) == 0:
+		for _, lines := range pages {
+			if len(lines) > 0 {
+				n++
+				starts = append(starts, Start{N: n, Title: fmt.Sprintf(section, n), StartPage: lines[0].Page, StartLine: lines[0].Num})
+			}
+		}
+	case before != nil:
+		starts = append([]Start{{N: 0, Title: intro, StartPage: before.Page, StartLine: before.Num}}, starts...)
+	}
+	return starts
+}
+
+// plainBody returns the paragraphs of a chapter of a book read from an
+// EPUB: every line is a paragraph. Lines with the chapter mark are the
+// title of this chapter or of a chapter merged into it by a hand-edited
+// chapters.json: the first is left out, later ones are kept as text.
+func plainBody(lines []clean.Line, _ Start, _ Options) []string {
+	var paragraphs []string
+	for i, l := range lines {
+		text, isTitle := strings.CutPrefix(l.Text, extract.ChapterMark)
+		if text == "" || (isTitle && i == 0) {
+			continue
+		}
+		paragraphs = append(paragraphs, clean.Normalize(text))
+	}
+	return paragraphs
 }
 
 // Format renders a chapter file: "# Title" and the paragraphs, separated by

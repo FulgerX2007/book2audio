@@ -56,6 +56,16 @@ func Pages(pages []string) [][]Line {
 	return out
 }
 
+// PlainPages splits page texts into lines without removing anything: for a
+// source that has no page numbers or running headers, such as an EPUB.
+func PlainPages(pages []string) [][]Line {
+	out := make([][]Line, len(pages))
+	for i, text := range pages {
+		out[i] = trimBlank(splitLines(i+1, text))
+	}
+	return out
+}
+
 func splitLines(page int, text string) []Line {
 	var lines []Line
 	num := 0

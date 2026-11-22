@@ -1,6 +1,6 @@
 # book2audio — project conventions
 
-Go CLI that turns a PDF into a Russian audiobook: `extract → chapters → translate → synth → build`. Go 1.27, one external dependency (`go.yaml.in/yaml/v3`).
+Go CLI that turns a PDF or an EPUB into a Russian audiobook: `extract → chapters → translate → synth → build`. Go 1.27, one external dependency (`go.yaml.in/yaml/v3`).
 
 ## Commands
 
@@ -23,7 +23,8 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 | `internal/workspace` | working folder: layout, lock, manifest, hashes, atomic writes |
 | `internal/execx` | `Runner` for external tools and its fake |
 | `internal/workpool` | bounded worker pool |
-| `internal/extract` | stage 1: page text, OCR fallback |
+| `internal/epub` | EPUB reader: metadata, reading order, table of contents, paragraphs; `epubtest` builds fixtures |
+| `internal/extract` | stage 1: page text, OCR fallback; an EPUB document per page |
 | `internal/clean` | headers, page numbers, paragraph assembly |
 | `internal/chapters` | stage 2: heading detection, chapter files |
 | `internal/chunk` | chapter parsing, chunking, sentence splitting |
@@ -42,6 +43,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 - **Same language.** When `Config.SameLanguage()` holds, the translate stage uses `translate.Passthrough` and needs no model settings; get the translator from `Deps.Translator`, not from `NewTranslator` directly.
 - **Piper voices.** With `Config.AutoVoice()` (Piper, no `tts.args`) `Deps.Synthesizer` fetches the voice through `Deps.FetchVoice` and writes the arguments into `ws.Config` before the synth stage hashes them. Create the synthesizer through `Deps.Synthesizer`; tests set `FetchVoice` and never reach the network.
 - **Browser interface.** `webui.Server` reads a book without the lock and runs the pipeline in a background job that takes it. Every request that changes something must carry the `X-Book2audio` header and, unless `AnyHost` is set, be addressed to localhost: keep both checks when adding a route. The page builds its DOM with `textContent`, never with HTML from the server.
+- **EPUB.** `epub.IsEPUB(ws.PDF)` switches the first two stages: `extract` writes one page per document of the reading order (a paragraph per line, `extract.ChapterMark` + title on the first line of a page that starts a chapter) and runs no external tool; `chapters` takes the starts from those marks and the lines as paragraphs, without `clean.Pages` or heading detection. Later stages do not know the source format.
 - **External tools** are run only through `execx.Runner`. Unit tests use `execx.FakeRunner`; tests with real tools skip themselves when the tool is missing.
 - **Backends** are created by a factory (`translate.New`, `tts.New`) and injected through `pipeline.Deps`. Tests use `translate.FakeTranslator` and `tts.FakeSynthesizer`, which count their calls — assert on the calls to prove that work was *not* repeated.
 - **Speech backends.** An engine that is expensive to start implements `tts.BatchSynthesizer`; the synth stage then gives each worker one batch instead of one segment. A per-segment error is returned in the slice and recorded as a failed unit; an engine that cannot run at all is a fatal error.
@@ -51,7 +53,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 
   | Stage | Unit | Input hash |
   |---|---|---|
-  | extract | page | PDF sha256, page number, `ocr_min_chars`, OCR language, `ocr_dpi` |
+  | extract | page | PDF sha256, page number, `ocr_min_chars`, OCR language, `ocr_dpi`; for an EPUB: file sha256, document number |
   | chapters | `index` (chapters.json) | all page texts, heading settings, `clean.RulesVersion`; the generated titles when they are not the Russian ones |
   | chapters | chapter | title, cleaned source lines, `clean.RulesVersion` |
   | translate | chunk (ID = hash) | chunk text, glossary terms that occur in it, backend, model, languages, temperature, `translate.PromptHash()`; in same-language mode only the chunk text |

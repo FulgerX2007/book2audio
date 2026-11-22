@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/FulgerX2007/book2audio/internal/config"
+	"github.com/FulgerX2007/book2audio/internal/epub/epubtest"
 	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/translate"
 	"github.com/FulgerX2007/book2audio/internal/tts"
@@ -644,5 +645,54 @@ func TestSynthesizerReportsAVoiceThatCannotBeFetched(t *testing.T) {
 	}
 	if _, err := deps.Synthesizer(context.Background(), ws, quiet); err == nil || !strings.Contains(err.Error(), "no network") {
 		t.Errorf("Synthesizer error = %v, want the fetch error", err)
+	}
+}
+
+// An EPUB goes through the whole pipeline without the PDF tools: the fake
+// runner knows only the encoder.
+func TestRunEPUB(t *testing.T) {
+	tmp := t.TempDir()
+	book := filepath.Join(tmp, "tides.epub")
+	epubtest.Write(t, book, epubtest.Sample())
+	cfg := filepath.Join(tmp, "config.yaml")
+	writeFile(t, cfg, "translate:\n  model: test-model\ntts:\n  args: [\"--out\", \"{out}\"]\n")
+	ws, err := workspace.Init(book, workspace.InitOptions{ConfigPath: cfg, Workdir: filepath.Join(tmp, "work")})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	f := &fakes{runner: newEncoder(), tr: &translate.FakeTranslator{}, syn: &tts.FakeSynthesizer{}}
+	var out bytes.Buffer
+	if err := Run(context.Background(), ws, f.deps(), quiet, &out, RunOptions{}); err != nil {
+		t.Fatalf("Run: %v\n%s", err, out.String())
+	}
+	for _, tool := range []string{"pdfinfo", "pdftotext", "pdftoppm", "tesseract"} {
+		if calls := f.runner.CallsTo(tool); len(calls) != 0 {
+			t.Errorf("%s was run %d times for an EPUB", tool, len(calls))
+		}
+	}
+
+	st, err := ReadStatus(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Chapters) != 3 || st.Chapters[1].Title != "Chapter 1: High Water" || !st.Chapters[2].Audio {
+		t.Errorf("chapters = %+v", st.Chapters)
+	}
+	translated := readFile(t, ws.TranslatedChapterPath(2))
+	if !strings.Contains(translated, "Chapter two goes on in another file.") {
+		t.Errorf("the continuation document is missing from chapter 2:\n%s", translated)
+	}
+	if entries, _ := os.ReadDir(ws.OutDir()); len(entries) != 1 {
+		t.Errorf("output files = %d, want the audiobook", len(entries))
+	}
+
+	// A second run repeats nothing.
+	calls := f.tr.Calls() + f.syn.Calls()
+	if err := Run(context.Background(), ws, f.deps(), quiet, &bytes.Buffer{}, RunOptions{}); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	if got := f.tr.Calls() + f.syn.Calls(); got != calls {
+		t.Errorf("backend calls after the second run = %d, want %d", got, calls)
 	}
 }

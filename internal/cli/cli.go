@@ -207,7 +207,7 @@ func newLogger(w io.Writer, verbose bool) *slog.Logger {
 }
 
 func (a *App) usage(w io.Writer) {
-	fmt.Fprintf(w, "%s — PDF to a Russian audiobook split by chapters\n\n", prog)
+	fmt.Fprintf(w, "%s — a PDF or EPUB to a Russian audiobook split by chapters\n\n", prog)
 	fmt.Fprintf(w, "Usage:\n  %s <subcommand> [flags] <arguments>\n\nSubcommands:\n", prog)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, cmd := range a.Commands {
@@ -237,7 +237,7 @@ func Builtin(deps Deps) []Command {
 	runner := deps.Runner
 	const book = "<book.pdf | work/<slug>>"
 	return []Command{
-		{Name: "init", Args: "<book.pdf>", Summary: "create the working folder of a book", Setup: setupInit},
+		{Name: "init", Args: "<book.pdf>", Summary: "create the working folder of a book (PDF or EPUB)", Setup: setupInit},
 		{Name: "extract", Args: book, Summary: "extract the text page by page (scans go through OCR)", Setup: setupExtract(runner)},
 		{Name: "chapters", Args: book, Summary: "clean the text and split it into chapters", Setup: setupChapters},
 		{Name: "translate", Args: book, Summary: "translate the chapters", Setup: setupTranslate(deps)},
@@ -254,7 +254,7 @@ func setupInit(fs *flag.FlagSet) RunFunc {
 	slug := fs.String("slug", "", "working folder name (default: from the file name)")
 	return func(_ context.Context, inv *Invocation) error {
 		if len(inv.Args) != 1 {
-			return &UsageError{Msg: "exactly one argument is required: the path of the PDF"}
+			return &UsageError{Msg: "exactly one argument is required: the path of the PDF or EPUB"}
 		}
 		ws, err := workspace.Init(inv.Args[0], workspace.InitOptions{
 			ConfigPath: inv.ConfigPath,

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/FulgerX2007/book2audio/internal/epub"
 	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/workpool"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
@@ -43,6 +44,9 @@ func UnitID(n int) string { return fmt.Sprintf("p%04d", n) }
 // Pages that are up to date are not touched. It returns
 // workspace.ErrUnitsFailed when some pages could not be extracted.
 func Run(ctx context.Context, ws *workspace.Workspace, runner execx.Runner, log *slog.Logger) (Result, error) {
+	if epub.IsEPUB(ws.PDF) {
+		return runEPUB(ctx, ws, log)
+	}
 	info, err := ReadInfo(ctx, runner, ws.PDF)
 	if err != nil {
 		return Result{}, err

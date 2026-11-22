@@ -1,9 +1,9 @@
 # book2audio
 
-A command-line tool written in Go: it turns a PDF into a Russian audiobook split by chapters.
+A command-line tool written in Go: it turns a PDF or an EPUB into a Russian audiobook split by chapters.
 
 ```
-PDF → page text (OCR for scans) → chapters → translation → speech → M4B or MP3
+PDF or EPUB → text (OCR for scanned PDF pages) → chapters → translation → speech → M4B or MP3
 ```
 
 It is meant for texts you have the rights to: your own documents and books in the public domain.
@@ -11,7 +11,7 @@ It is meant for texts you have the rights to: your own documents and books in th
 ## Requirements
 
 - Go 1.27 to build.
-- `poppler-utils` (`pdfinfo`, `pdftotext`, `pdftoppm`) for text extraction.
+- `poppler-utils` (`pdfinfo`, `pdftotext`, `pdftoppm`) for text extraction from a PDF. An EPUB needs no extra tools.
 - `tesseract-ocr` with the data of the book's language, only for pages without a text layer.
 - `ffmpeg` with the `aac` and `libmp3lame` encoders to build the audiobook.
 - A translation server with an OpenAI-compatible API: local (Ollama, llama.cpp, vLLM) or in the cloud.
@@ -64,6 +64,16 @@ Common flags: `--config` (a config for one run), `--workdir`, `--force`, `-v`. F
 
 One process works on a book at a time: a second run on the same folder fails. The exception is `status`: it only reads, so it works while the book is being processed in another window. For each chapter it shows how many chunks are translated and how many segments are synthesised out of the total, for example `7/12`. Translation and speech do not go page by page: chapters are cut into chunks of `translate.chunk_chars` characters, so progress is counted in chunks.
 
+## EPUB books
+
+Give an `.epub` file wherever a PDF is expected: `book2audio init book.epub`, `book2audio run book.epub`. An EPUB is easier to read than a PDF, so the result is usually cleaner:
+
+- the chapters come from the book's table of contents, with its titles; `chapters.heading_regex` and the other `chapters` settings are not used;
+- paragraphs are taken as they are in the book: nothing is guessed from line lengths, and there are no page numbers or running headers to remove;
+- footnote marks, images and navigation pages are left out.
+
+A "page" of an EPUB is one document of its reading order: `01-pages/p0001.txt` holds the first one, with a paragraph per line. A document that begins a chapter has `# Title` as its first line. A document that is not in the table of contents continues the chapter before it; text ahead of the first chapter becomes chapter 0. `chapters.json` can be edited as for a PDF. Books protected by DRM cannot be read.
+
 ## Browser interface
 
 ```sh
@@ -73,7 +83,7 @@ book2audio ui --workdir ../books
 It prints an address, by default `http://127.0.0.1:8080`; open it in a browser. From WSL the same address works in a browser on Windows. The page shows:
 
 - the books of the directory, with the ones being processed marked;
-- a form to add a book: upload a PDF or give its path on the computer;
+- a form to add a book: upload a PDF or an EPUB, or give its path on the computer;
 - for a book: progress by stage and by chapter, failures, files edited by hand, the log of the last run and the finished audiobook to download;
 - **Run** and **Stop**, with the first and the last stage to run. A stopped run keeps its finished work, like Ctrl-C.
 

@@ -318,8 +318,8 @@ func TestAddBookErrors(t *testing.T) {
 	tests := []struct {
 		name, file, slug, want string
 	}{
-		{"nothing chosen", "", "", "choose a PDF"},
-		{"not a PDF", "notes.txt", "", "not a PDF"},
+		{"nothing chosen", "", "", "choose a PDF or EPUB"},
+		{"not a book", "notes.txt", "", "not a PDF or EPUB"},
 		{"bad folder name", "book.pdf", "../escape", "invalid folder name"},
 	}
 	for _, tt := range tests {
