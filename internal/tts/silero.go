@@ -11,6 +11,7 @@ import (
 	"github.com/FulgerX2007/book2audio/internal/audio"
 	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/execx"
+	"github.com/FulgerX2007/book2audio/internal/speech"
 )
 
 // Silero synthesises speech with Silero TTS through scripts/silero_tts.py.
@@ -51,8 +52,10 @@ func (s *Silero) SynthesizeBatch(ctx context.Context, items []Item) ([]error, er
 	}
 	var input bytes.Buffer
 	for _, item := range items {
-		// The protocol is line-based and tab-separated.
-		text := strings.Join(strings.Fields(item.Text), " ")
+		// The model reads only Russian: words in Latin letters are rewritten
+		// in Cyrillic, otherwise it skips them. The protocol is line-based
+		// and tab-separated.
+		text := strings.Join(strings.Fields(speech.RussianizeLatin(item.Text)), " ")
 		if text == "" {
 			text = " " // keep the line; the script reports the empty text
 		}

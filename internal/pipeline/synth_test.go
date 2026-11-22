@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/FulgerX2007/book2audio/internal/audio"
+	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/execx"
+	"github.com/FulgerX2007/book2audio/internal/speech"
 	"github.com/FulgerX2007/book2audio/internal/translate"
 	"github.com/FulgerX2007/book2audio/internal/tts"
 	"github.com/FulgerX2007/book2audio/internal/workspace"
@@ -586,7 +588,8 @@ func TestSynthBatchBackendStartsTheEngineOncePerWorker(t *testing.T) {
 
 func TestSynthBatchBackendFailures(t *testing.T) {
 	t.Run("a failed segment is recorded, the rest is done", func(t *testing.T) {
-		runner := sileroRunner("Paragraph C ")
+		// The engine sees Latin words rewritten in Cyrillic.
+		runner := sileroRunner(speech.RussianizeLatin("Paragraph C opens here."))
 		ws, syn := sileroBook(t, runner)
 
 		res, err := Synth(context.Background(), ws, syn, quiet, SynthOptions{Chapter: AllChapters})
@@ -599,7 +602,7 @@ func TestSynthBatchBackendFailures(t *testing.T) {
 		if res := synthAll(t, ws, syn); res.Synthesized != 1 {
 			t.Errorf("retry: Result = %+v", res)
 		}
-		if calls := fixed.CallsTo("silero_tts.py"); len(calls) != 1 || !strings.Contains(string(calls[0].Input), "Paragraph C ") {
+		if calls := fixed.CallsTo("silero_tts.py"); len(calls) != 1 || !strings.Contains(string(calls[0].Input), speech.RussianizeLatin("Paragraph C opens here.")) {
 			t.Errorf("retry calls = %d", len(calls))
 		}
 	})
@@ -677,5 +680,26 @@ func TestSplitJobs(t *testing.T) {
 	}
 	if parts := splitJobs(nil, 3); len(parts) != 0 {
 		t.Errorf("splitJobs of nothing = %v", parts)
+	}
+}
+
+// Only the segments with Latin words depend on the rewriting rules of the
+// Silero backend: all others keep the hash they had before the rules existed.
+func TestSegmentHashLatinWords(t *testing.T) {
+	ws := emptyBook(t)
+	plain := workspace.HashStrings(append([]string{StageSynth, "Просто текст.", ws.Config.TTS.Backend, ws.Config.TTS.Command}, ws.Config.TTS.Args...)...)
+	if got := segmentHash(ws, "Просто текст."); got != plain {
+		t.Error("piper: the hash of a Russian segment changed")
+	}
+	piperLatin := segmentHash(ws, "Журнал Wired.")
+
+	ws.Config.TTS.Backend, ws.Config.TTS.Command, ws.Config.TTS.Args = config.BackendSilero, "silero_tts.py", nil
+	russian := workspace.HashStrings(StageSynth, "Просто текст.", config.BackendSilero, "silero_tts.py")
+	if got := segmentHash(ws, "Просто текст."); got != russian {
+		t.Error("silero: the hash of a Russian segment changed")
+	}
+	withoutRules := workspace.HashStrings(StageSynth, "Журнал Wired.", config.BackendSilero, "silero_tts.py")
+	if got := segmentHash(ws, "Журнал Wired."); got == withoutRules || got == piperLatin {
+		t.Error("silero: a segment with Latin words must depend on the rewriting rules")
 	}
 }

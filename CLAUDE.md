@@ -54,7 +54,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
   | chapters | chapter | title, cleaned source lines, `clean.RulesVersion` |
   | translate | chunk (ID = hash) | chunk text, glossary terms that occur in it, backend, model, languages, temperature, `translate.PromptHash()`; in same-language mode only the chunk text |
   | translated | chapter file | ordered chunk hashes |
-  | synth | segment (ID = hash) | segment text, backend, command, args before `{out}` is substituted; `accent_command` and its args when set |
+  | synth | segment (ID = hash) | segment text, backend, command, args before `{out}` is substituted; `accent_command` and its args when set; `speech.LatinRulesVersion` for a Silero segment with Latin words |
   | build | chapter WAV | ordered segment hashes with paragraph flags, pause length |
   | build | output file | chapter hashes and titles, format, bitrate, tags |
 

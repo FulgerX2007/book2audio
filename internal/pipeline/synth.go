@@ -13,6 +13,7 @@ import (
 
 	"github.com/FulgerX2007/book2audio/internal/chapters"
 	"github.com/FulgerX2007/book2audio/internal/chunk"
+	"github.com/FulgerX2007/book2audio/internal/config"
 	"github.com/FulgerX2007/book2audio/internal/execx"
 	"github.com/FulgerX2007/book2audio/internal/speech"
 	"github.com/FulgerX2007/book2audio/internal/tts"
@@ -226,6 +227,12 @@ func segmentHash(ws *workspace.Workspace, text string) string {
 	if cfg.AccentCommand != "" {
 		parts = append(parts, "accent", cfg.AccentCommand)
 		parts = append(parts, cfg.AccentArgs...)
+	}
+	// The Silero backend rewrites Latin words in Cyrillic. Only a segment
+	// that has such words depends on those rules, so all others keep the
+	// hash, and the audio, they had before.
+	if cfg.Backend == config.BackendSilero && speech.HasLatin(text) {
+		parts = append(parts, "latin", speech.LatinRulesVersion)
 	}
 	return workspace.HashStrings(parts...)
 }

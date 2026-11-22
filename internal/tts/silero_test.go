@@ -173,3 +173,31 @@ func TestSileroErrors(t *testing.T) {
 		}
 	})
 }
+
+// Words in Latin letters reach the engine rewritten in Cyrillic; the output
+// path, which may hold Latin letters, is not touched.
+func TestSileroRussianizesLatinWords(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "segment.wav")
+	fake := execx.NewFakeRunner()
+	var input string
+	fake.Handle("silero_tts.py", func(call execx.Call) ([]byte, error) {
+		input = string(call.Input)
+		if err := os.WriteFile(out, goodWAV(t), 0o644); err != nil {
+			return nil, err
+		}
+		return []byte("ok\n"), nil
+	})
+	cfg := config.Default().TTS
+	cfg.Backend, cfg.Command, cfg.Args = config.BackendSilero, "silero_tts.py", nil
+	s, err := NewSilero(cfg, fake)
+	if err != nil {
+		t.Fatalf("NewSilero: %v", err)
+	}
+	if err := s.Synthesize(context.Background(), "Журнал Wired и FBI.", out); err != nil {
+		t.Fatalf("Synthesize: %v", err)
+	}
+	if want := out + "\tЖурнал виред и эф би ай.\n"; input != want {
+		t.Errorf("engine input = %q, want %q", input, want)
+	}
+}

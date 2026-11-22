@@ -9,9 +9,10 @@ For every line one line is printed to standard output, in the same order:
 "ok", or "err <message>" when the segment could not be synthesised. The WAV
 file (16-bit PCM, mono) appears only when it is complete.
 
-Silero reads only Russian. A segment without a single Cyrillic letter
-(a title or a reference list left in the source language) cannot be spoken; a
-short silence is written for it so that the chapter can still be built.
+Silero reads only Russian. book2audio rewrites words in Latin letters in
+Cyrillic before it sends the text, so what arrives here without a single
+Cyrillic letter has nothing to read (digits, dashes); a short silence is
+written for it so that the chapter can still be built.
 
 Requires: pip install silero scipy
 """
