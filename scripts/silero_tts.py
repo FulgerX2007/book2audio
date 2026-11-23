@@ -25,6 +25,7 @@ import wave
 SPEAKABLE = re.compile(r"[\u0400-\u04FF]")
 SILENCE_SECONDS = 0.3
 MAX_UNKNOWN_SYMBOLS = 30
+MIN_SPLIT_CHARS = 40
 
 
 def speakable(text):
@@ -62,6 +63,42 @@ def speak(apply_tts, text):
     return apply_tts(text)
 
 
+def split_text(text):
+    """Cuts text in two near its middle: after a sentence if there is one,
+    else after a comma or a similar mark, else at a space. Returns None when
+    the text cannot be cut."""
+    middle = len(text) // 2
+    for marks in (".!?…", ",;:—–", " "):
+        cuts = [i + 1 for i, ch in enumerate(text[:-1]) if ch in marks and (marks == " " or text[i + 1] == " ")]
+        cuts = [c for c in cuts if text[:c].strip() and text[c:].strip()]
+        if cuts:
+            cut = min(cuts, key=lambda c: abs(c - middle))
+            return text[:cut].strip(), text[cut:].strip()
+    return None
+
+
+def speak_pieces(apply_tts, text):
+    """Synthesises text and returns the audio as a list of pieces.
+
+    Silero refuses a text it finds too long, and where that limit lies
+    depends on the text. Such a text is cut in two and each half is tried on
+    its own, as deep as needed. A part with nothing to read is skipped.
+    """
+    if not speakable(text):
+        return []
+    try:
+        return [speak(apply_tts, text)]
+    except (KeyError, ValueError):
+        raise
+    except Exception as exc:
+        if "too long" not in str(exc).lower():
+            raise
+        halves = split_text(text) if len(text) >= MIN_SPLIT_CHARS else None
+        if halves is None:
+            raise
+        return speak_pieces(apply_tts, halves[0]) + speak_pieces(apply_tts, halves[1])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--speaker", default="xenia", help="voice name (default: xenia)")
@@ -88,13 +125,14 @@ def main():
                 write_wav(out, bytes(2 * int(args.sample_rate * SILENCE_SECONDS)), args.sample_rate)
                 print("ok", flush=True)
                 continue
-            audio = speak(
+            pieces = speak_pieces(
                 lambda t: model.apply_tts(
                     text=t, speaker=args.speaker, sample_rate=args.sample_rate,
                     put_accent=True, put_yo=True, put_stress_homo=True, put_yo_homo=True,
                 ),
                 text,
             )
+            audio = pieces[0] if len(pieces) == 1 else torch.cat(pieces)
             pcm = (audio.clamp(-1, 1) * 32767).to(torch.int16).cpu().numpy().tobytes()
             write_wav(out, pcm, args.sample_rate)
             print("ok", flush=True)
