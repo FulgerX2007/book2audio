@@ -620,3 +620,34 @@ func TestRetry(t *testing.T) {
 		})
 	}
 }
+
+func TestHeaderSettings(t *testing.T) {
+	f := newFixture(t)
+	f.upload("book.pdf", "")
+	base := settingsJSON{Translate: true, SourceLang: "en", TargetLang: "ru", Model: "m"}
+
+	req := base
+	req.Headers = "\n anthropic-workspace-id:  wrkspc_1 \nx-b: has: colons\n"
+	var saved settingsJSON
+	if status := f.json(http.MethodPost, "/api/books/book/settings", req, &saved); status != http.StatusOK ||
+		saved.Headers != "anthropic-workspace-id: wrkspc_1\nx-b: has: colons" {
+		t.Fatalf("save: status %d, headers %q", status, saved.Headers)
+	}
+	cfg, err := config.Load(filepath.Join(f.server.Workdir, "book", "config.yaml"))
+	if err != nil || cfg.Translate.Headers["anthropic-workspace-id"] != "wrkspc_1" || cfg.Translate.Headers["x-b"] != "has: colons" {
+		t.Errorf("headers in the config = %v, %v", cfg.Translate.Headers, err)
+	}
+
+	// Clearing the field removes them.
+	if f.json(http.MethodPost, "/api/books/book/settings", base, &saved); saved.Headers != "" {
+		t.Errorf("headers after clearing = %q", saved.Headers)
+	}
+
+	var answer map[string]string
+	for _, bad := range []string{"no-colon", "name:", ": value", "bad name: v"} {
+		req.Headers = bad
+		if status := f.json(http.MethodPost, "/api/books/book/settings", req, &answer); status != http.StatusBadRequest {
+			t.Errorf("headers %q: status %d, %v", bad, status, answer)
+		}
+	}
+}

@@ -3,14 +3,15 @@ package config
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
 
 // UpdateYAML sets values in a YAML config and returns the new text. Keys
-// are dotted paths such as "translate.model"; a value is a string or a list
-// of strings. Everything else in the
+// are dotted paths such as "translate.model"; a value is a string, a list of
+// strings or a map of strings. Everything else in the
 // document, comments included, is kept. The result is parsed and validated
 // as a config: an update that makes the config invalid is an error.
 func UpdateYAML(data []byte, set map[string]any) ([]byte, error) {
@@ -85,6 +86,25 @@ func setPath(node *yaml.Node, path []string, value any) error {
 				child.Content = nil
 				for _, item := range v {
 					child.Content = append(child.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: item, Style: yaml.DoubleQuotedStyle})
+				}
+			case map[string]string:
+				if child.Kind == yaml.SequenceNode || (child.Kind == yaml.ScalarNode && child.Value != "") {
+					return fmt.Errorf("is not a section")
+				}
+				child.Kind, child.Tag, child.Value, child.Style = yaml.MappingNode, "!!map", "", 0
+				child.Content = nil
+				names := make([]string, 0, len(v))
+				for name := range v {
+					names = append(names, name)
+				}
+				sort.Strings(names)
+				for _, name := range names {
+					child.Content = append(child.Content,
+						&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name},
+						&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v[name], Style: yaml.DoubleQuotedStyle})
+				}
+				if len(v) == 0 {
+					child.Style = yaml.FlowStyle // "{}"
 				}
 			default:
 				return fmt.Errorf("unsupported value %T", value)

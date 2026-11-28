@@ -169,6 +169,9 @@ type settingsJSON struct {
 	Model      string `json:"model"`
 	BaseURL    string `json:"baseUrl"`
 	APIKeyEnv  string `json:"apiKeyEnv"`
+	// Headers are the extra request headers of the translation server, one
+	// "name: value" per line: a workspace or project ID, for example.
+	Headers string `json:"headers"`
 	// KeySet tells whether the variable named by APIKeyEnv has a value in
 	// the environment of this server. The key itself never leaves it.
 	KeySet bool `json:"keySet"`
@@ -191,6 +194,7 @@ func settingsOf(cfg config.Config) settingsJSON {
 		Model:      cfg.Translate.Model,
 		BaseURL:    cfg.Translate.BaseURL,
 		APIKeyEnv:  cfg.Translate.APIKeyEnv,
+		Headers:    formatHeaders(cfg.Translate.Headers),
 		KeySet:     cfg.Translate.APIKeyEnv != "" && os.Getenv(cfg.Translate.APIKeyEnv) != "",
 		TTSBackend: cfg.TTS.Backend,
 		TTSCommand: cfg.TTS.Command,
@@ -198,6 +202,34 @@ func settingsOf(cfg config.Config) settingsJSON {
 		Backends:   []string{config.BackendPiper, config.BackendSilero},
 		AutoVoice:  autoVoice(cfg),
 	}
+}
+
+// formatHeaders renders headers one "name: value" per line, sorted.
+func formatHeaders(headers map[string]string) string {
+	lines := make([]string, 0, len(headers))
+	for name, value := range headers {
+		lines = append(lines, name+": "+value)
+	}
+	sort.Strings(lines)
+	return strings.Join(lines, "\n")
+}
+
+// parseHeaders reads "name: value" lines; blank lines are skipped.
+func parseHeaders(text string) (map[string]string, error) {
+	headers := map[string]string{}
+	for line := range strings.Lines(text) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		name, value, ok := strings.Cut(line, ":")
+		name, value = strings.TrimSpace(name), strings.TrimSpace(value)
+		if !ok || name == "" || value == "" {
+			return nil, fmt.Errorf("extra header %q: write it as name: value", line)
+		}
+		headers[name] = value
+	}
+	return headers, nil
 }
 
 // autoVoice names the Piper voice that the synth stage would download for
@@ -394,6 +426,12 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 			set["translate.base_url"] = base
 		}
 		set["translate.api_key_env"] = strings.TrimSpace(req.APIKeyEnv)
+		headers, err := parseHeaders(req.Headers)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		set["translate.headers"] = headers
 	} else {
 		// A book read in its own language; the model settings stay as they are.
 		set["target_lang"] = source

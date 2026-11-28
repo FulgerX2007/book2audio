@@ -113,3 +113,30 @@ func TestUpdateYAMLLists(t *testing.T) {
 		t.Errorf("tts = %+v", cfg.TTS)
 	}
 }
+
+func TestUpdateYAMLMaps(t *testing.T) {
+	const original = "translate:\n  model: m\n  headers:\n    old-header: x\n"
+	out, err := UpdateYAML([]byte(original), map[string]any{
+		"translate.headers": map[string]string{"anthropic-workspace-id": "wrkspc_1", "x-b": "2"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateYAML: %v", err)
+	}
+	cfg, err := Parse(strings.NewReader(string(out)))
+	if err != nil || len(cfg.Translate.Headers) != 2 || cfg.Translate.Headers["anthropic-workspace-id"] != "wrkspc_1" {
+		t.Errorf("headers = %v, %v\n%s", cfg.Translate.Headers, err, out)
+	}
+
+	// An empty map removes the headers; a new section is created when missing.
+	out, err = UpdateYAML(out, map[string]any{"translate.headers": map[string]string{}})
+	if err != nil || !strings.Contains(string(out), "headers: {}") {
+		t.Errorf("empty map: %v\n%s", err, out)
+	}
+	out, err = UpdateYAML([]byte("source_lang: en\n"), map[string]any{"translate.headers": map[string]string{"a": "b"}})
+	if cfg, perr := Parse(strings.NewReader(string(out))); err != nil || perr != nil || cfg.Translate.Headers["a"] != "b" {
+		t.Errorf("new section: %v %v\n%s", err, perr, out)
+	}
+	if _, err := UpdateYAML([]byte("translate:\n  headers: [a]\n"), map[string]any{"translate.headers": map[string]string{"a": "b"}}); err == nil {
+		t.Error("a list was replaced by a map")
+	}
+}

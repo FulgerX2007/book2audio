@@ -48,6 +48,8 @@
   .btn.primary { border: 0; background: var(--accent); color: var(--bg); padding: 0 22px; }
   .btn.stop { border-color: var(--bad); color: var(--bad); }
   .btn.dashed { border-style: dashed; font-weight: 500; width: 100%; }
+  textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--line2); background: var(--panel); color: var(--ink); font: 13px var(--mono); resize: vertical; }
+  textarea:disabled { opacity: .45; }
   select, input[type=text], input[type=file] { min-height: 44px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line2); background: var(--panel); color: var(--ink); }
   input[type=text], input[type=file] { width: 100%; }
   input[type=file] { padding: 9px 10px; }
@@ -167,6 +169,7 @@
           <label>Model <input type="text" id="s-model" placeholder="the model name on the server" autocomplete="off" spellcheck="false"></label>
           <label>API address <input type="text" id="s-url" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false"></label>
           <label>Variable with the API key <input type="text" id="s-key" placeholder="B2A_API_KEY" autocomplete="off" spellcheck="false"></label>
+          <label style="grid-column: span 2">Extra headers, one per line <textarea id="s-headers" rows="2" placeholder="anthropic-workspace-id: wrkspc_..." autocomplete="off" spellcheck="false"></textarea></label>
           <div class="hint wide" id="s-keyhint"></div>
           <label>Speech engine <select id="s-backend"></select></label>
           <label>Engine command <input type="text" id="s-command" placeholder="piper" autocomplete="off" spellcheck="false"></label>
@@ -441,6 +444,7 @@ function fillSettings(s) {
   $("s-model").value = s.model;
   $("s-url").value = s.baseUrl;
   $("s-key").value = s.apiKeyEnv;
+  $("s-headers").value = s.headers;
   const backend = $("s-backend");
   backend.replaceChildren();
   for (const name of s.backends) { const o = el("option", name); o.value = name; backend.append(o); }
@@ -453,7 +457,7 @@ function fillSettings(s) {
 // syncSettings greys out the translation fields when translation is off.
 function syncSettings() {
   const on = $("s-translate").checked;
-  for (const id of ["s-target", "s-model", "s-url", "s-key"]) $(id).disabled = !on;
+  for (const id of ["s-target", "s-model", "s-url", "s-key", "s-headers"]) $(id).disabled = !on;
   const silero = $("s-backend").value === "silero";
   $("s-ttshint").textContent = silero
     ? "silero: the command is the full path of scripts/silero_tts.py; arguments such as --speaker xenia. It reads Russian."
@@ -505,7 +509,7 @@ $("setform").onsubmit = async ev => {
       method: "POST", headers: {...HEADER, "Content-Type": "application/json"},
       body: JSON.stringify({
         translate: $("s-translate").checked, sourceLang: $("s-source").value, targetLang: $("s-target").value,
-        model: $("s-model").value, baseUrl: $("s-url").value, apiKeyEnv: $("s-key").value,
+        model: $("s-model").value, baseUrl: $("s-url").value, apiKeyEnv: $("s-key").value, headers: $("s-headers").value,
         ttsBackend: $("s-backend").value, ttsCommand: $("s-command").value, ttsArgs: $("s-args").value,
       }),
     });

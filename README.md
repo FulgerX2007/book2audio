@@ -86,7 +86,7 @@ It prints an address, by default `http://127.0.0.1:8080`; open it in a browser. 
 - a form to add a book: upload a PDF or an EPUB, or give its path on the computer;
 - for a book: progress by stage and by chapter, failures, files edited by hand, the log of the last run and the finished audiobook to download;
 - **Run** and **Stop**, with the first and the last stage to run. A stopped run keeps its finished work, like Ctrl-C;
-- **Settings** of the book: whether to translate it, the two languages, the model, the address of its API and the name of the variable that holds the API key; and the speech engine (Piper or Silero) with its command and arguments. With translation off the book is read in its own language and no model is needed. The page tells whether the key variable has a value; the key itself is never shown or stored.
+- **Settings** of the book: whether to translate it, the two languages, the model, the address of its API, the name of the variable that holds the API key and extra request headers (such as `anthropic-workspace-id`); and the speech engine (Piper or Silero) with its command and arguments. With translation off the book is read in its own language and no model is needed. The page tells whether the key variable has a value; the key itself is never shown or stored.
 
 `--config` names the config that is copied into books added from the page; `--addr` changes the address. Saving the settings rewrites only those keys of the book's `config.yaml`; comments and other keys are kept. The other settings, the glossary and the chapter texts are edited as files.
 
