@@ -140,8 +140,14 @@
       book2audio
     </div>
     <div>
-      <div class="label" id="count">Books</div>
-      <ul class="books" id="books"></ul>
+      <div id="grp-active">
+        <div class="label" id="count-active">In progress</div>
+        <ul class="books" id="books-active"></ul>
+      </div>
+      <div id="grp-done" style="margin-top: 16px">
+        <div class="label" id="count-done">Done</div>
+        <ul class="books" id="books-done"></ul>
+      </div>
       <p class="muted" id="nobooks" hidden>No books yet.</p>
     </div>
     <button type="button" class="btn dashed" id="addtoggle" aria-expanded="false" aria-controls="add">+ Add a book</button>
@@ -302,10 +308,12 @@ function activeStage(d) {
 async function loadBooks() {
   let books;
   try { books = await api("/api/books"); } catch (e) { return; }
-  $("count").textContent = "Books · " + books.length;
   $("nobooks").hidden = books.length > 0;
-  const ul = $("books");
-  ul.replaceChildren();
+  // Two lists: books with a finished audiobook and nothing left to fix,
+  // and everything else.
+  const lists = {active: $("books-active"), done: $("books-done")};
+  const counts = {active: 0, done: 0};
+  lists.active.replaceChildren(); lists.done.replaceChildren();
   for (const b of books) {
     let done = 0, total = 0, failed = 0, last = "";
     for (const s of b.stages) { done += s.done; total += s.total; failed += s.failed; if (s.total > 0) last = s.name; }
@@ -324,8 +332,14 @@ async function loadBooks() {
     else s.textContent = "not started";
     btn.append(t, s);
     btn.onclick = () => select(b.slug);
-    const li = el("li"); li.append(btn); ul.append(li);
+    const group = finished && !failed && !b.error && !b.running ? "done" : "active";
+    counts[group]++;
+    const li = el("li"); li.append(btn); lists[group].append(li);
   }
+  $("count-active").textContent = "In progress · " + counts.active;
+  $("count-done").textContent = "Done · " + counts.done;
+  $("grp-active").hidden = counts.active === 0;
+  $("grp-done").hidden = counts.done === 0;
 }
 
 function select(slug) {

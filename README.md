@@ -121,7 +121,7 @@ book2audio ui --workdir ../books
 
 It prints an address, by default `http://127.0.0.1:8080`; open it in a browser. From WSL the same address works in a browser on Windows. The page shows:
 
-- the books of the directory, with the ones being processed marked;
+- the books of the directory in two lists: "In progress" (not finished, running or with failures) and "Done" (the audiobook is built and nothing failed);
 - a form to add a book: upload a PDF or an EPUB, or give its path on the computer;
 - for a book: progress by stage and by chapter, failures, files edited by hand, the log of the last run and the finished audiobook to download;
 - **Run** and **Stop**, with the first and the last stage to run. A stopped run keeps its finished work, like Ctrl-C;
