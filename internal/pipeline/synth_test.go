@@ -723,3 +723,35 @@ func TestSynthMissingToolIsFatal(t *testing.T) {
 		t.Errorf("Counts = %+v, want nothing recorded", c)
 	}
 }
+
+// Paragraphs with the same text share one audio file and one unit of the
+// manifest, but each of them is a fragment of its chapter. The stage line
+// of the status must count them like the chapter lines do.
+func TestStatusCountsRepeatedSegments(t *testing.T) {
+	ws := translatedBook(t,
+		chapterText{1, "Chapter 1", paras("A", "B", "A", "A")},
+		chapterText{2, "Chapter 2", paras("B", "C", "B")},
+	)
+	synthAll(t, ws, &tts.FakeSynthesizer{})
+
+	st, err := ReadStatus(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := 0
+	for _, ch := range st.Chapters {
+		if ch.Segments == 0 || ch.SegmentsDone != ch.Segments {
+			t.Errorf("chapter %d = %+v, want every segment done", ch.N, ch)
+		}
+		listed += ch.Segments
+	}
+	unique := ws.Manifest.Counts(StageSynth).Done
+	if unique >= listed {
+		t.Fatalf("the book has no repeated segments: %d units for %d segments", unique, listed)
+	}
+	for _, s := range st.Stages {
+		if s.Name == StageSynth && (s.Counts.Total != listed || s.Counts.Done != listed || s.Counts.Failed != 0) {
+			t.Errorf("synth stage = %+v, want %d of %d like the chapters (the manifest has %d units)", s.Counts, listed, listed, unique)
+		}
+	}
+}

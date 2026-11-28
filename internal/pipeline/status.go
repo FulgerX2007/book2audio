@@ -91,17 +91,28 @@ func ReadStatus(ws *workspace.Workspace) (Status, error) {
 	// The manifest knows a chunk or a segment only once it is finished or
 	// has failed, so while a stage is running its count of units is the
 	// work done so far. The planned lists of the chapters give the total.
-	var chunks, segments int
+	//
+	// The manifest also keeps one unit for fragments with the same text
+	// (they share a cache file), while a chapter lists each of them. Once
+	// the lists cover the stage, its line counts what the chapters count,
+	// so that the two never disagree.
+	var chunks, segments workspace.Counts
 	for _, c := range st.Chapters {
-		chunks += c.Chunks
-		segments += c.Segments
+		chunks.Total, chunks.Done, chunks.Failed = chunks.Total+c.Chunks, chunks.Done+c.ChunksDone, chunks.Failed+c.ChunksFailed
+		segments.Total, segments.Done, segments.Failed = segments.Total+c.Segments, segments.Done+c.SegmentsDone, segments.Failed+c.SegmentsFailed
 	}
 	for i := range st.Stages {
-		switch s := &st.Stages[i]; s.Name {
+		s := &st.Stages[i]
+		planned := chunks
+		switch s.Name {
 		case StageTranslate:
-			s.Counts.Total = max(s.Counts.Total, chunks)
 		case StageSynth:
-			s.Counts.Total = max(s.Counts.Total, segments)
+			planned = segments
+		default:
+			continue
+		}
+		if planned.Total >= s.Counts.Total {
+			s.Counts.Total, s.Counts.Done, s.Counts.Failed = planned.Total, planned.Done, planned.Failed
 		}
 	}
 	for _, stage := range editableStages {

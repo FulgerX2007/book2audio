@@ -330,12 +330,13 @@ func (s *Server) listBooks(w http.ResponseWriter, r *http.Request) {
 		if _, err := os.Stat(filepath.Join(dir, "manifest.json")); err != nil {
 			continue // not a book
 		}
+		job := s.jobState(e.Name())
 		ws, st, err := s.read(e.Name())
 		if err != nil {
 			books = append(books, bookJSON{Slug: e.Name(), Title: e.Name(), Error: err.Error()})
 			continue
 		}
-		books = append(books, s.book(e.Name(), ws, st))
+		books = append(books, s.book(e.Name(), ws, st, job))
 	}
 	writeJSON(w, http.StatusOK, books)
 }
@@ -345,6 +346,10 @@ func (s *Server) bookDetail(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// The job is looked at before the book: the state of the book is then
+	// never older than the job says, so a finished run is not shown with
+	// the counts of a moment before its end.
+	job := s.jobState(slug)
 	ws, st, err := s.read(slug)
 	if err != nil {
 		writeError(w, statusOf(err), err)
@@ -356,7 +361,7 @@ func (s *Server) bookDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := detailJSON{
-		bookJSON:   s.book(slug, ws, st),
+		bookJSON:   s.book(slug, ws, st, job),
 		Settings:   settings,
 		Dir:        ws.Dir,
 		ConfigPath: ws.ConfigPath(),
@@ -378,10 +383,7 @@ func (s *Server) bookDetail(w http.ResponseWriter, r *http.Request) {
 	for _, f := range st.Failures {
 		d.Failures = append(d.Failures, failureJSON{Stage: f.Stage, Chapter: f.Chapter, Error: f.Error, Out: f.Out})
 	}
-	if j := s.job(slug); j != nil {
-		snap := j.snapshot()
-		d.Job = &snap
-	}
+	d.Job = job
 	writeJSON(w, http.StatusOK, d)
 }
 
@@ -682,7 +684,18 @@ func retry(attempts int, delay time.Duration, fn func() error) error {
 	return err
 }
 
-func (s *Server) book(slug string, ws *workspace.Workspace, st pipeline.Status) bookJSON {
+// jobState returns the state of the last job of a book, or nil.
+func (s *Server) jobState(slug string) *jobJSON {
+	j := s.job(slug)
+	if j == nil {
+		return nil
+	}
+	snap := j.snapshot()
+	return &snap
+}
+
+// book describes a book; job is its job state as read before st.
+func (s *Server) book(slug string, ws *workspace.Workspace, st pipeline.Status, job *jobJSON) bookJSON {
 	b := bookJSON{
 		Slug:   slug,
 		Title:  firstNonEmpty(ws.Config.Book.Title, ws.Source.Title, slug),
@@ -691,9 +704,7 @@ func (s *Server) book(slug string, ws *workspace.Workspace, st pipeline.Status) 
 		Pages:  ws.Source.Pages,
 		Stages: []stageJSON{},
 	}
-	if j := s.job(slug); j != nil {
-		b.Running = j.snapshot().Running
-	}
+	b.Running = job != nil && job.Running
 	for _, stage := range st.Stages {
 		b.Stages = append(b.Stages, stageJSON{
 			Name: stage.Name, Units: stage.What,
