@@ -40,6 +40,10 @@
   .dot.done { background: var(--accent); }
   @keyframes pulse { 50% { opacity: .3; } }
   @media (prefers-reduced-motion: reduce) { .dot.run { animation: none; } }
+  details.group summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; min-height: 28px; }
+  details.group summary::-webkit-details-marker { display: none; }
+  details.group summary::before { content: "▸"; font-size: 10px; }
+  details.group[open] summary::before { content: "▾"; }
   nav .foot { margin-top: auto; font: 12px var(--mono); color: var(--muted); word-break: break-all; }
 
   button, select, input { font: inherit; }
@@ -144,10 +148,10 @@
         <div class="label" id="count-active">In progress</div>
         <ul class="books" id="books-active"></ul>
       </div>
-      <div id="grp-done" style="margin-top: 16px">
-        <div class="label" id="count-done">Done</div>
+      <details id="grp-done" class="group" style="margin-top: 16px">
+        <summary class="label"><span id="count-done">Done</span></summary>
         <ul class="books" id="books-done"></ul>
-      </div>
+      </details>
       <p class="muted" id="nobooks" hidden>No books yet.</p>
     </div>
     <button type="button" class="btn dashed" id="addtoggle" aria-expanded="false" aria-controls="add">+ Add a book</button>
@@ -750,6 +754,13 @@ $("add").onsubmit = async ev => {
   } catch (e) { err.textContent = e.message; err.hidden = false; }
   $("addbtn").disabled = false;
 };
+
+// The list of finished books is folded until it is opened; the choice is
+// remembered in this browser.
+try { $("grp-done").open = localStorage.getItem("b2a.done.open") === "1"; } catch (e) { /* storage is unavailable */ }
+$("grp-done").addEventListener("toggle", () => {
+  try { localStorage.setItem("b2a.done.open", $("grp-done").open ? "1" : "0"); } catch (e) { /* storage is unavailable */ }
+});
 
 $("foot").textContent = location.host;
 refresh();
