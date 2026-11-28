@@ -79,6 +79,20 @@
   details.settings .hint { font: 12px var(--mono); }
   details.settings .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 
+  .pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 10px; }
+  .pcard { border-radius: 8px; background: var(--panel); border: 1px solid var(--line); padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; align-content: start; }
+  .pcard.new { border-style: dashed; }
+  .pcard.def { border-color: var(--accent); }
+  .pcard label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+  .pcard label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; min-height: 44px; }
+  .pcard input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+  .pcard .wide { grid-column: 1 / -1; }
+  .pcard .head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .pcard .head strong { font-size: 16px; }
+  .pcard .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .pcard .hint { font: 12px var(--mono); }
+  h2.sec { margin: 0; font-size: 16px; font-weight: 600; }
+
   .banner { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
   .banner.bad { border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad); }
 
@@ -138,10 +152,23 @@
       <button class="btn primary" id="addbtn">Add</button>
       <div class="bad" id="adderr" role="alert" hidden></div>
     </form>
+    <button type="button" class="btn" id="profbtn" style="width: 100%">Profiles</button>
     <div class="foot" id="foot"></div>
   </nav>
 
   <main>
+    <div id="profiles" hidden style="display: flex; flex-direction: column; gap: 22px">
+      <header>
+        <div style="min-width: 0">
+          <h1>Profiles</h1>
+          <div class="meta" id="p-path"></div>
+        </div>
+      </header>
+      <div class="banner">A profile holds the connection to a translation server or a speech engine once, for every book. A book uses the default profile unless its Settings name another one or its own values. Books that are already translated or voiced keep their own settings when a default appears, so nothing is redone by surprise.</div>
+      <div class="banner" id="p-msg" role="status" hidden></div>
+      <section><h2 class="sec">Translation</h2><div class="pgrid" id="p-translate"></div></section>
+      <section><h2 class="sec">Speech</h2><div class="pgrid" id="p-speech"></div></section>
+    </div>
     <p class="empty" id="empty">Select a book, or add a PDF or an EPUB.</p>
     <div id="book" hidden style="display: flex; flex-direction: column; gap: 22px">
       <header>
@@ -166,15 +193,17 @@
           <label class="check wide"><input type="checkbox" id="s-translate"> Translate the book</label>
           <label>Language of the book <input type="text" id="s-source" placeholder="en" autocomplete="off" spellcheck="false"></label>
           <label>Translate into <input type="text" id="s-target" placeholder="ru" autocomplete="off" spellcheck="false"></label>
-          <label>Model <input type="text" id="s-model" placeholder="the model name on the server" autocomplete="off" spellcheck="false"></label>
-          <label>API address <input type="text" id="s-url" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false"></label>
-          <label>Variable with the API key <input type="text" id="s-key" placeholder="B2A_API_KEY" autocomplete="off" spellcheck="false"></label>
-          <label style="grid-column: span 2">Extra headers, one per line <textarea id="s-headers" rows="2" placeholder="anthropic-workspace-id: wrkspc_..." autocomplete="off" spellcheck="false"></textarea></label>
+          <label>Translation profile <select id="s-profile"></select></label>
+          <label class="own-tr">Model <input type="text" id="s-model" placeholder="the model name on the server" autocomplete="off" spellcheck="false"></label>
+          <label class="own-tr">API address <input type="text" id="s-url" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false"></label>
+          <label class="own-tr">Variable with the API key <input type="text" id="s-key" placeholder="B2A_API_KEY" autocomplete="off" spellcheck="false"></label>
+          <label class="own-tr" style="grid-column: span 2">Extra headers, one per line <textarea id="s-headers" rows="2" placeholder="anthropic-workspace-id: wrkspc_..." autocomplete="off" spellcheck="false"></textarea></label>
           <div class="hint wide" id="s-keyhint"></div>
-          <label>Speech engine <select id="s-backend"></select></label>
-          <label>Engine command <input type="text" id="s-command" placeholder="piper" autocomplete="off" spellcheck="false"></label>
-          <label style="grid-column: span 2">Engine arguments <input type="text" id="s-args" placeholder="--speaker xenia" autocomplete="off" spellcheck="false"></label>
-          <div class="hint wide muted" id="s-ttshint"></div>
+          <label class="wide" style="max-width: 420px">Speech profile <select id="s-ttsprofile"></select></label>
+          <label class="own-tts">Speech engine <select id="s-backend"></select></label>
+          <label class="own-tts">Engine command <input type="text" id="s-command" placeholder="piper" autocomplete="off" spellcheck="false"></label>
+          <label class="own-tts" style="grid-column: span 2">Engine arguments <input type="text" id="s-args" placeholder="--speaker xenia" autocomplete="off" spellcheck="false"></label>
+          <div class="hint wide muted own-tts" id="s-ttshint"></div>
           <div class="actions wide">
             <button class="btn primary" id="s-save">Save</button>
             <span id="s-msg" role="status"></span>
@@ -227,6 +256,8 @@ let selected = decodeURIComponent(location.hash.slice(1)) || "";
 // Short unit names for the stage tiles.
 const UNITS = {extract: "pages", chapters: "files", translate: "chunks", synth: "segments", build: "files"};
 let stagesFor = "";      // the book whose stage lists fill the selects
+let view = "book";      // "book" or "profiles"
+let curSettings = null; // the settings of the book on the screen
 let settingsFor = "";   // the book whose settings fill the form
 let shownBook = "";     // the book whose details are on the screen
 let readErrors = 0;     // failed reads of it in a row
@@ -279,7 +310,7 @@ async function loadBooks() {
     let done = 0, total = 0, failed = 0, last = "";
     for (const s of b.stages) { done += s.done; total += s.total; failed += s.failed; if (s.total > 0) last = s.name; }
     const btn = el("button"); btn.type = "button";
-    if (b.slug === selected) { btn.className = "sel"; btn.setAttribute("aria-current", "true"); }
+    if (b.slug === selected && view === "book") { btn.className = "sel"; btn.setAttribute("aria-current", "true"); }
     const t = el("div", null, "t");
     const build = b.stages.find(s => s.name === "build");
     const finished = build && build.total > 0 && build.done === build.total;
@@ -298,6 +329,8 @@ async function loadBooks() {
 }
 
 function select(slug) {
+  view = "book";
+  $("profiles").hidden = true;
   selected = slug;
   location.hash = encodeURIComponent(slug);
   refresh();
@@ -319,6 +352,7 @@ function countCell(done, total, failed, complete, running) {
 }
 
 async function loadDetail() {
+  if (view !== "book") { $("book").hidden = true; $("empty").hidden = true; return; }
   if (!selected) { $("book").hidden = true; $("empty").hidden = false; return; }
   let d;
   try { d = await api("/api/books/" + encodeURIComponent(selected)); }
@@ -436,6 +470,22 @@ async function loadDetail() {
   }
 }
 
+// fillProfileSelect offers the default, every profile and the book's own
+// settings.
+function fillProfileSelect(sel, names, def, chosen) {
+  sel.replaceChildren();
+  const add = (value, text) => { const o = el("option", text); o.value = value; sel.append(o); };
+  if (def) add("", "default (" + def + ")");
+  for (const name of names) add(name, name);
+  add(def ? "own" : "", "own settings of this book");
+  if (!def && names.length) add("own", "own settings, even when a default appears");
+  sel.value = chosen;
+  if (sel.selectedIndex < 0) sel.selectedIndex = 0;
+}
+
+// ownInEffect tells whether a profile select leaves the book's own fields in use.
+function ownInEffect(sel, def) { return sel.value === "own" || (sel.value === "" && !def); }
+
 // fillSettings puts the saved settings into the form.
 function fillSettings(s) {
   $("s-translate").checked = s.translate;
@@ -445,6 +495,8 @@ function fillSettings(s) {
   $("s-url").value = s.baseUrl;
   $("s-key").value = s.apiKeyEnv;
   $("s-headers").value = s.headers;
+  fillProfileSelect($("s-profile"), s.translateProfiles, s.translateDefault, s.profile);
+  fillProfileSelect($("s-ttsprofile"), s.speechProfiles, s.speechDefault, s.ttsProfile);
   const backend = $("s-backend");
   backend.replaceChildren();
   for (const name of s.backends) { const o = el("option", name); o.value = name; backend.append(o); }
@@ -457,7 +509,11 @@ function fillSettings(s) {
 // syncSettings greys out the translation fields when translation is off.
 function syncSettings() {
   const on = $("s-translate").checked;
-  for (const id of ["s-target", "s-model", "s-url", "s-key", "s-headers"]) $(id).disabled = !on;
+  for (const id of ["s-target", "s-model", "s-url", "s-key", "s-headers", "s-profile"]) $(id).disabled = !on;
+  const s = curSettings || {};
+  const ownTr = ownInEffect($("s-profile"), s.translateDefault), ownTts = ownInEffect($("s-ttsprofile"), s.speechDefault);
+  for (const e of document.querySelectorAll(".own-tr")) e.hidden = !ownTr;
+  for (const e of document.querySelectorAll(".own-tts")) e.hidden = !ownTts;
   const silero = $("s-backend").value === "silero";
   $("s-ttshint").textContent = silero
     ? "silero: the command is the full path of scripts/silero_tts.py; arguments such as --speaker xenia. It reads Russian."
@@ -466,14 +522,20 @@ function syncSettings() {
 
 function showSettings(d, running) {
   const s = d.settings;
+  curSettings = s;
+  const via = name => name ? " [" + name + "]" : "";
   $("setsum").textContent = s.translate
-    ? "translate " + s.sourceLang + " → " + s.targetLang + " · model " + (s.model || "not set")
+    ? "translate " + s.sourceLang + " → " + s.targetLang + " · model " + (s.effModel || "not set") + via(s.profileUsed)
     : "no translation · read in " + s.sourceLang;
-  $("setsum").textContent += " · voice " + s.ttsBackend + (s.autoVoice ? " (" + s.autoVoice + ")" : "");
-  $("setsum").className = "sum" + (s.translate && !s.model ? " bad" : "");
+  $("setsum").textContent += " · voice " + s.effEngine + (s.autoVoice ? " (" + s.autoVoice + ")" : "") + via(s.ttsProfileUsed);
+  $("setsum").className = "sum" + (s.translate && !s.effModel ? " bad" : "");
 
   const hint = $("s-keyhint");
   if (!s.translate) { hint.textContent = ""; }
+  else if (s.profileUsed) {
+    hint.textContent = "profile " + s.profileUsed + ": " + (s.keySet ? "API key found" : "no API key in the environment (fine for a local server)");
+    hint.className = "hint wide " + (s.keySet ? "ok" : "muted");
+  }
   else if (!s.apiKeyEnv) { hint.textContent = "no API key is sent (fine for a local server)"; hint.className = "hint wide muted"; }
   else if (s.keySet) { hint.textContent = "key found in " + s.apiKeyEnv; hint.className = "hint wide ok"; }
   else { hint.textContent = s.apiKeyEnv + " is empty: run export " + s.apiKeyEnv + "=... in the terminal, then start the interface again"; hint.className = "hint wide bad"; }
@@ -483,10 +545,13 @@ function showSettings(d, running) {
   if (settingsFor !== d.slug) {
     fillSettings(s);
     $("s-msg").textContent = "";
-    $("settings").open = s.translate && !s.model;
+    $("settings").open = s.translate && !s.effModel;
     settingsFor = d.slug;
   }
 }
+
+$("s-profile").onchange = syncSettings;
+$("s-ttsprofile").onchange = syncSettings;
 
 $("s-backend").onchange = () => {
   // Each engine has its own usual command.
@@ -511,12 +576,120 @@ $("setform").onsubmit = async ev => {
         translate: $("s-translate").checked, sourceLang: $("s-source").value, targetLang: $("s-target").value,
         model: $("s-model").value, baseUrl: $("s-url").value, apiKeyEnv: $("s-key").value, headers: $("s-headers").value,
         ttsBackend: $("s-backend").value, ttsCommand: $("s-command").value, ttsArgs: $("s-args").value,
+        profile: $("s-profile").value, ttsProfile: $("s-ttsprofile").value,
       }),
     });
+    curSettings = saved;
     fillSettings(saved);
     msg.textContent = "Saved. The next run uses these settings."; msg.className = "ok";
   } catch (e) { msg.textContent = e.message; msg.className = "bad"; return; }
   refresh();
+};
+
+// ----- profiles -----
+
+function pfield(label, value, placeholder, wide) {
+  const wrap = el("label", label + " ");
+  if (wide) wrap.className = "wide";
+  const input = el("input"); input.type = "text"; input.value = value || ""; input.placeholder = placeholder || "";
+  input.autocomplete = "off"; input.spellcheck = false;
+  wrap.append(input);
+  return {wrap, input};
+}
+
+// profileCard builds the form of one profile; p is null for a new one.
+function profileCard(kind, p, backends) {
+  const isNew = !p;
+  p = p || {name: "", default: false, books: 0};
+  const card = el("form", null, "pcard" + (isNew ? " new" : "") + (p.default ? " def" : ""));
+  const head = el("div", null, "head wide");
+  head.append(el("strong", isNew ? "New profile" : p.name));
+  if (!isNew) head.append(el("span", (p.default ? "default · " : "") + p.books + (p.books === 1 ? " book" : " books"), "muted"));
+  card.append(head);
+
+  const name = pfield("Name", p.name, kind === "translate" ? "anthropic" : "silero", true);
+  if (isNew) card.append(name.wrap);
+  let read;
+  if (kind === "translate") {
+    const model = pfield("Model", p.model, "the model name on the server");
+    const url = pfield("API address", p.baseUrl, "https://api.anthropic.com/v1");
+    const key = pfield("Variable with the API key", p.apiKeyEnv, "B2A_API_KEY");
+    const workers = pfield("Parallel requests", p.workers ? String(p.workers) : "", "as in the book");
+    const hw = el("label", "Extra headers, one per line ", "wide");
+    const headers = el("textarea"); headers.rows = 2; headers.value = p.headers || ""; headers.placeholder = "anthropic-workspace-id: wrkspc_...";
+    headers.spellcheck = false; hw.append(headers);
+    card.append(model.wrap, url.wrap, key.wrap, workers.wrap, hw);
+    if (!isNew && p.apiKeyEnv) card.append(el("div", p.keySet ? "key found in " + p.apiKeyEnv : p.apiKeyEnv + " is empty in the terminal that started the interface", "hint wide " + (p.keySet ? "ok" : "bad")));
+    read = () => ({model: model.input.value, baseUrl: url.input.value, apiKeyEnv: key.input.value,
+      workers: parseInt(workers.input.value, 10) || 0, headers: headers.value});
+  } else {
+    const bw = el("label", "Speech engine ");
+    const backend = el("select");
+    for (const b of backends) { const o = el("option", b); o.value = b; backend.append(o); }
+    backend.value = p.backend || backends[0];
+    bw.append(backend);
+    const command = pfield("Engine command", p.command, "piper, or the path of silero_tts.py");
+    const args = pfield("Engine arguments", p.args, "--speaker xenia", true);
+    const voice = pfield("Piper voice to download", p.voice, "en_US-lessac-medium");
+    const seg = pfield("Fragment size, characters", p.segmentChars ? String(p.segmentChars) : "", "as in the book");
+    card.append(bw, command.wrap, args.wrap, voice.wrap, seg.wrap);
+    read = () => ({backend: backend.value, command: command.input.value, args: args.input.value,
+      voice: voice.input.value, segmentChars: parseInt(seg.input.value, 10) || 0});
+  }
+
+  const dw = el("label", null, "check wide");
+  const def = el("input"); def.type = "checkbox"; def.checked = p.default;
+  dw.append(def, document.createTextNode(" Default for books that choose no profile"));
+  card.append(dw);
+
+  const actions = el("div", null, "actions wide");
+  const save = el("button", isNew ? "Add" : "Save", "btn primary");
+  const msg = el("span"); msg.setAttribute("role", "status");
+  actions.append(save);
+  if (!isNew) {
+    const del = el("button", "Delete", "btn"); del.type = "button";
+    del.onclick = async () => {
+      try { renderProfiles((await profileCall(kind + "/delete", {name: p.name})).profiles); }
+      catch (e) { msg.textContent = e.message; msg.className = "bad"; }
+    };
+    actions.append(del);
+  }
+  actions.append(msg);
+  card.append(actions);
+
+  card.onsubmit = async ev => {
+    ev.preventDefault();
+    try {
+      const res = await profileCall(kind, {name: isNew ? name.input.value : p.name, default: def.checked, ...read()});
+      renderProfiles(res.profiles);
+      const note = $("p-msg"); note.hidden = false; note.className = "banner";
+      note.textContent = "Saved." + (res.pinned.length ? " These books already have results and keep their own settings: " + res.pinned.join(", ") + ". Choose the profile in their Settings to switch them." : "");
+      loadBooks();
+    } catch (e) { msg.textContent = e.message; msg.className = "bad"; }
+  };
+  return card;
+}
+
+function profileCall(path, body) {
+  return api("/api/profiles/" + path, {method: "POST", headers: {...HEADER, "Content-Type": "application/json"}, body: JSON.stringify(body)});
+}
+
+function renderProfiles(data) {
+  $("p-path").textContent = data.path;
+  for (const kind of ["translate", "speech"]) {
+    const box = $("p-" + kind); box.replaceChildren();
+    for (const p of data[kind]) box.append(profileCard(kind, p, data.backends));
+    box.append(profileCard(kind, null, data.backends));
+  }
+  settingsFor = ""; // the book form shows the new choices next time
+}
+
+$("profbtn").onclick = async () => {
+  view = "profiles";
+  $("book").hidden = true; $("empty").hidden = true; $("profiles").hidden = false; $("p-msg").hidden = true;
+  for (const b of document.querySelectorAll(".books button")) b.classList.remove("sel");
+  try { renderProfiles(await api("/api/profiles")); }
+  catch (e) { const note = $("p-msg"); note.hidden = false; note.className = "banner bad"; note.textContent = e.message; }
 };
 
 async function refresh() { await Promise.all([loadBooks(), loadDetail()]); }

@@ -214,6 +214,11 @@ func Open(arg string, opts OpenOptions) (*Workspace, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The translation and speech profiles of the books directory, if the
+	// book uses them.
+	if err := config.ApplyProfiles(&cfg, filepath.Dir(dir)); err != nil {
+		return nil, err
+	}
 	manifest, err := LoadManifest(dir)
 	if err != nil {
 		return nil, err

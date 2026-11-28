@@ -74,6 +74,13 @@ type Chapters struct {
 
 // Translate configures the translation stage.
 type Translate struct {
+	// Profile names a translation profile of the books directory (see
+	// ApplyProfiles). Empty: the default profile, if there is one.
+	Profile string `yaml:"profile"`
+	// ProfileUsed is the profile whose settings are in effect; it is set by
+	// ApplyProfiles and not stored.
+	ProfileUsed string `yaml:"-"`
+
 	Backend     string  `yaml:"backend"`
 	BaseURL     string  `yaml:"base_url"`
 	Model       string  `yaml:"model"`
@@ -89,6 +96,13 @@ type Translate struct {
 
 // TTS configures the speech synthesis stage.
 type TTS struct {
+	// Profile names a speech profile of the books directory (see
+	// ApplyProfiles). Empty: the default profile, if there is one.
+	Profile string `yaml:"profile"`
+	// ProfileUsed is the profile whose settings are in effect; it is set by
+	// ApplyProfiles and not stored.
+	ProfileUsed string `yaml:"-"`
+
 	Backend      string   `yaml:"backend"`
 	Command      string   `yaml:"command"`
 	Args         []string `yaml:"args"`          // must contain OutPlaceholder

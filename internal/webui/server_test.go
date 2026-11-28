@@ -651,3 +651,175 @@ func TestHeaderSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestProfiles(t *testing.T) {
+	f := newFixture(t)
+	f.upload("book.pdf", "")
+	t.Setenv("B2A_TEST_PROFILE_KEY", "secret")
+
+	var view profilesJSON
+	if status := f.json(http.MethodGet, "/api/profiles", nil, &view); status != http.StatusOK || len(view.Translate) != 0 || len(view.Speech) != 0 {
+		t.Fatalf("no profiles yet: status %d, %+v", status, view)
+	}
+
+	// The first profile of a kind becomes the default, so the book uses it.
+	var saved struct {
+		Profiles profilesJSON `json:"profiles"`
+		Pinned   []string     `json:"pinned"`
+	}
+	status := f.json(http.MethodPost, "/api/profiles/translate", translateProfileJSON{
+		Name: "cloud", Model: "big-model", BaseURL: "https://api.example.com/v1",
+		APIKeyEnv: "B2A_TEST_PROFILE_KEY", Headers: "x-workspace: w1",
+	}, &saved)
+	if status != http.StatusOK || len(saved.Profiles.Translate) != 1 {
+		t.Fatalf("save: status %d, %+v", status, saved)
+	}
+	if p := saved.Profiles.Translate[0]; !p.Default || !p.KeySet || p.Books != 1 || p.Headers != "x-workspace: w1" || len(saved.Pinned) != 0 {
+		t.Errorf("profile = %+v, pinned %v", p, saved.Pinned)
+	}
+	f.json(http.MethodPost, "/api/profiles/speech", speechProfileJSON{
+		Name: "silero", Backend: config.BackendSilero, Command: "/opt/silero_tts.py", Args: "--speaker xenia", SegmentChars: 800,
+	}, &saved)
+	if len(saved.Profiles.Speech) != 1 || !saved.Profiles.Speech[0].Default || saved.Profiles.Speech[0].Books != 1 {
+		t.Fatalf("speech profile = %+v", saved.Profiles.Speech)
+	}
+	if text, _ := os.ReadFile(filepath.Join(f.server.Workdir, config.ProfilesFile)); strings.Contains(string(text), "secret") {
+		t.Error("the key itself was written to the profiles file")
+	}
+
+	// The book follows the defaults; its own fields are still its own.
+	var d detailJSON
+	f.json(http.MethodGet, "/api/books/book", nil, &d)
+	set := d.Settings
+	if set.ProfileUsed != "cloud" || set.TTSProfileUsed != "silero" || set.EffModel != "big-model" || set.EffEngine != config.BackendSilero ||
+		set.Model != "test-model" || set.Profile != "" || !set.KeySet || len(set.TranslateProfiles) != 1 {
+		t.Fatalf("book settings = %+v", set)
+	}
+
+	// The run uses the profile: no model is needed in the book.
+	var created config.Translate
+	f.server.Deps.NewTranslator = func(cfg config.Translate) (translate.Translator, error) {
+		created = cfg
+		return f.tr, nil
+	}
+	f.json(http.MethodPost, "/api/books/book/run", map[string]any{"to": pipeline.StageTranslate}, nil)
+	if d = f.wait("book"); d.Job.Error != "" {
+		t.Fatalf("run: %+v", d.Job)
+	}
+	if created.Model != "big-model" || created.Headers["x-workspace"] != "w1" || created.APIKeyEnv != "B2A_TEST_PROFILE_KEY" {
+		t.Errorf("translator made with %+v", created)
+	}
+
+	// A second profile; the book chooses it by name, then its own settings.
+	f.json(http.MethodPost, "/api/profiles/translate", translateProfileJSON{Name: "local", Model: "small", BaseURL: "http://localhost:11434/v1"}, &saved)
+	if len(saved.Profiles.Translate) != 2 || saved.Profiles.Translate[1].Default {
+		t.Errorf("after the second profile: %+v", saved.Profiles.Translate)
+	}
+	var s2 settingsJSON
+	f.json(http.MethodPost, "/api/books/book/settings", settingsJSON{Translate: true, SourceLang: "en", TargetLang: "ru", Profile: "local"}, &s2)
+	if s2.Profile != "local" || s2.ProfileUsed != "local" || s2.EffModel != "small" || s2.Model != "test-model" {
+		t.Errorf("book on the local profile = %+v", s2)
+	}
+	f.json(http.MethodPost, "/api/books/book/settings", settingsJSON{
+		Translate: true, SourceLang: "en", TargetLang: "ru", Profile: config.ProfileOwn, Model: "mine",
+		TTSProfile: config.ProfileOwn, TTSBackend: config.BackendPiper, TTSCommand: "piper",
+	}, &s2)
+	if s2.ProfileUsed != "" || s2.EffModel != "mine" || s2.TTSProfileUsed != "" || s2.EffEngine != config.BackendPiper {
+		t.Errorf("book on its own settings = %+v", s2)
+	}
+
+	var answer map[string]string
+	if status := f.json(http.MethodPost, "/api/books/book/settings", settingsJSON{Translate: true, SourceLang: "en", TargetLang: "ru", Profile: "gone"}, &answer); status != http.StatusBadRequest || !strings.Contains(answer["error"], "gone") {
+		t.Errorf("unknown profile: status %d, %v", status, answer)
+	}
+}
+
+// Making a profile the default must not change books that already have
+// translations or audio made with their own settings.
+func TestProfileDefaultKeepsStartedBooks(t *testing.T) {
+	f := newFixture(t)
+	f.upload("done.pdf", "")
+	f.upload("fresh.pdf", "")
+	f.json(http.MethodPost, "/api/books/done/run", map[string]any{"to": pipeline.StageTranslate}, nil)
+	if d := f.wait("done"); d.Job.Error != "" {
+		t.Fatalf("run: %+v", d.Job)
+	}
+	calls := f.tr.Calls()
+
+	var saved struct {
+		Pinned []string `json:"pinned"`
+	}
+	f.json(http.MethodPost, "/api/profiles/translate", translateProfileJSON{Name: "cloud", Model: "big-model", BaseURL: "https://api.example.com/v1"}, &saved)
+	if len(saved.Pinned) != 1 || saved.Pinned[0] != "done" {
+		t.Fatalf("pinned = %v, want only the translated book", saved.Pinned)
+	}
+	var done, fresh detailJSON
+	f.json(http.MethodGet, "/api/books/done", nil, &done)
+	f.json(http.MethodGet, "/api/books/fresh", nil, &fresh)
+	if done.Settings.Profile != config.ProfileOwn || done.Settings.EffModel != "test-model" {
+		t.Errorf("translated book = %+v", done.Settings)
+	}
+	if fresh.Settings.Profile != "" || fresh.Settings.EffModel != "big-model" {
+		t.Errorf("new book = %+v", fresh.Settings)
+	}
+
+	// So a new run of the translated book translates nothing again.
+	f.json(http.MethodPost, "/api/books/done/run", map[string]any{"to": pipeline.StageTranslate}, nil)
+	f.wait("done")
+	if f.tr.Calls() != calls {
+		t.Errorf("translator calls = %d, want %d: the book was translated again", f.tr.Calls(), calls)
+	}
+}
+
+func TestProfileErrorsAndDelete(t *testing.T) {
+	f := newFixture(t)
+	f.upload("book.pdf", "")
+	var answer map[string]any
+	bad := []struct {
+		name, path string
+		req        any
+		code       int
+	}{
+		{"no name", "/api/profiles/translate", translateProfileJSON{Model: "m", BaseURL: "http://h/v1"}, http.StatusBadRequest},
+		{"reserved name", "/api/profiles/translate", translateProfileJSON{Name: "own", Model: "m", BaseURL: "http://h/v1"}, http.StatusBadRequest},
+		{"no model", "/api/profiles/translate", translateProfileJSON{Name: "x", BaseURL: "http://h/v1"}, http.StatusBadRequest},
+		{"bad address", "/api/profiles/translate", translateProfileJSON{Name: "x", Model: "m", BaseURL: "nowhere"}, http.StatusBadRequest},
+		{"bad header", "/api/profiles/translate", translateProfileJSON{Name: "x", Model: "m", BaseURL: "http://h/v1", Headers: "nocolon"}, http.StatusBadRequest},
+		{"speech without a command", "/api/profiles/speech", speechProfileJSON{Name: "x", Backend: config.BackendPiper}, http.StatusBadRequest},
+		{"unknown engine", "/api/profiles/speech", speechProfileJSON{Name: "x", Backend: "robot", Command: "r"}, http.StatusBadRequest},
+		{"unknown kind", "/api/profiles/music", translateProfileJSON{Name: "x"}, http.StatusNotFound},
+		{"malformed body", "/api/profiles/speech", "text", http.StatusBadRequest},
+	}
+	for _, tt := range bad {
+		if status := f.json(http.MethodPost, tt.path, tt.req, &answer); status != tt.code {
+			t.Errorf("%s: status %d, %v; want %d", tt.name, status, answer, tt.code)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(f.server.Workdir, config.ProfilesFile)); err == nil {
+		t.Error("a rejected profile created the profiles file")
+	}
+
+	f.json(http.MethodPost, "/api/profiles/translate", translateProfileJSON{Name: "cloud", Model: "m", BaseURL: "http://h/v1"}, &answer)
+	f.json(http.MethodPost, "/api/profiles/translate", translateProfileJSON{Name: "spare", Model: "m2", BaseURL: "http://h/v1"}, &answer)
+
+	// In use as the default: not deleted.
+	if status := f.json(http.MethodPost, "/api/profiles/translate/delete", map[string]string{"name": "cloud"}, &answer); status != http.StatusConflict ||
+		!strings.Contains(fmt.Sprint(answer["error"]), "book") {
+		t.Errorf("delete of a used profile: status %d, %v", status, answer)
+	}
+	var view struct {
+		Profiles profilesJSON `json:"profiles"`
+	}
+	if status := f.json(http.MethodPost, "/api/profiles/translate/delete", map[string]string{"name": "spare"}, &view); status != http.StatusOK || len(view.Profiles.Translate) != 1 {
+		t.Errorf("delete of an unused profile: status %d, %+v", status, view)
+	}
+	if status := f.json(http.MethodPost, "/api/profiles/translate/delete", map[string]string{"name": "spare"}, &answer); status != http.StatusNotFound {
+		t.Errorf("delete of a missing profile: status %d", status)
+	}
+
+	// Unchecking "default" on the default profile leaves no default.
+	f.json(http.MethodPost, "/api/profiles/translate", translateProfileJSON{Name: "cloud", Model: "m", BaseURL: "http://h/v1", Default: false}, &view)
+	if len(view.Profiles.Translate) != 1 || view.Profiles.Translate[0].Default || view.Profiles.Translate[0].Books != 0 {
+		t.Errorf("profiles after unchecking the default = %+v", view.Profiles.Translate)
+	}
+}

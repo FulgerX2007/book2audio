@@ -19,7 +19,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 |---|---|
 | `cmd/book2audio` | `main`: signal handling, exit code |
 | `internal/cli` | subcommand dispatch, shared flags, usage |
-| `internal/config` | YAML config, defaults, validation |
+| `internal/config` | YAML config, defaults, validation; shared profiles; `UpdateYAML` |
 | `internal/workspace` | working folder: layout, lock, manifest, hashes, atomic writes |
 | `internal/execx` | `Runner` for external tools and its fake |
 | `internal/workpool` | bounded worker pool |
@@ -44,6 +44,7 @@ Run `gofmt -l .`, `go vet ./...` and `go test ./...` before every commit; run `m
 - **Piper voices.** With `Config.AutoVoice()` (Piper, no `tts.args`) `Deps.Synthesizer` fetches the voice through `Deps.FetchVoice` and writes the arguments into `ws.Config` before the synth stage hashes them. Create the synthesizer through `Deps.Synthesizer`; tests set `FetchVoice` and never reach the network.
 - **Browser interface.** `webui.Server` reads a book without the lock and runs the pipeline in a background job that takes it. Every request that changes something must carry the `X-Book2audio` header and, unless `AnyHost` is set, be addressed to localhost: keep both checks when adding a route. The page builds its DOM with `textContent`, never with HTML from the server. Settings are saved with `config.UpdateYAML`, which keeps the rest of `config.yaml`; an API key is never read into a response or written to a file.
 - **EPUB.** `epub.IsEPUB(ws.PDF)` switches the first two stages: `extract` writes one page per document of the reading order (a paragraph per line, `extract.ChapterMark` + title on the first line of a page that starts a chapter) and runs no external tool; `chapters` takes the starts from those marks and the lines as paragraphs, without `clean.Pages` or heading detection. Later stages do not know the source format.
+- **Shared profiles.** `profiles.yaml` in the books directory holds named translation and speech profiles; `workspace.Open` applies them with `config.ApplyProfiles` (`translate.profile` / `tts.profile`: a name, empty for the default, `own` for the book's settings), so every stage sees the effective config and the hashes follow it. When code changes which profile is the default, books that follow the default and already have results must first be pinned to `own` (`webui.Server.pinStarted`).
 - **External tools** are run only through `execx.Runner`. Unit tests use `execx.FakeRunner`; tests with real tools skip themselves when the tool is missing.
 - **Backends** are created by a factory (`translate.New`, `tts.New`) and injected through `pipeline.Deps`. Tests use `translate.FakeTranslator` and `tts.FakeSynthesizer`, which count their calls — assert on the calls to prove that work was *not* repeated.
 - **Speech backends.** An engine that is expensive to start implements `tts.BatchSynthesizer`; the synth stage then gives each worker one batch instead of one segment. A per-segment error is returned in the slice and recorded as a failed unit; an engine that cannot run at all is a fatal error.

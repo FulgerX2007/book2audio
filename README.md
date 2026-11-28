@@ -64,6 +64,45 @@ Common flags: `--config` (a config for one run), `--workdir`, `--force`, `-v`. F
 
 One process works on a book at a time: a second run on the same folder fails. The exception is `status`: it only reads, so it works while the book is being processed in another window. For each chapter it shows how many chunks are translated and how many segments are synthesised out of the total, for example `7/12`. Translation and speech do not go page by page: chapters are cut into chunks of `translate.chunk_chars` characters, so progress is counted in chunks.
 
+## Shared profiles
+
+The connection to a translation server and the speech engine can be set once for all the books of a directory, in `profiles.yaml` next to the book folders:
+
+```yaml
+translate:
+  default: anthropic
+  profiles:
+    anthropic:
+      base_url: https://api.anthropic.com/v1
+      model: your-model
+      api_key_env: B2A_API_KEY
+      headers:
+        anthropic-workspace-id: wrkspc_...
+    local:
+      base_url: http://localhost:11434/v1
+      model: your-local-model
+speech:
+  default: silero
+  profiles:
+    silero:
+      backend: silero
+      command: /full/path/to/scripts/silero_tts.py
+      args: ["--speaker", "xenia"]
+      segment_chars: 800
+```
+
+A book chooses its profiles in its own `config.yaml`:
+
+| `translate.profile` / `tts.profile` | The book uses |
+|---|---|
+| empty or absent | the `default` profile of that kind; its own settings when there is no default |
+| a profile name | that profile |
+| `own` | its own `translate` / `tts` settings, whatever the default |
+
+A translation profile replaces the book's `base_url`, `model`, `api_key_env` and `headers` (and `workers`, `temperature` when it sets them); a speech profile replaces `backend`, `command`, `args` and `voice` (and `segment_chars`, `workers` when it sets them). Everything else stays the book's. Profiles work the same from the command line and from the browser interface, which has a **Profiles** page to edit them and a profile choice in each book's Settings.
+
+Changing the model or the voice of a profile changes it for every book that uses the profile: their next run translates or voices again with the new one. For that reason the interface, when a default profile appears or changes, writes `own` into the books that already have translations (or audio) so that finished books are not redone by surprise; switch such a book to the profile in its Settings when you want that.
+
 ## EPUB books
 
 Give an `.epub` file wherever a PDF is expected: `book2audio init book.epub`, `book2audio run book.epub`. An EPUB is easier to read than a PDF, so the result is usually cleaner:

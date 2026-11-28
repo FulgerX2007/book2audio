@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"errors"
+	"github.com/FulgerX2007/book2audio/internal/config"
 	"os"
 	"path/filepath"
 	"strings"
@@ -469,5 +470,53 @@ func TestWriteFileAtomic(t *testing.T) {
 
 	if err := WriteFileAtomic(filepath.Join(dir, "absent", "file.txt"), []byte("x"), 0o644); err == nil {
 		t.Error("WriteFileAtomic into a missing directory succeeded")
+	}
+}
+
+// A book opened in a directory with profiles gets their settings, and a
+// book that names a missing profile does not open.
+func TestOpenAppliesProfiles(t *testing.T) {
+	tmp := t.TempDir()
+	pdf := filepath.Join(tmp, "book.pdf")
+	if err := os.WriteFile(pdf, []byte("%PDF-1.4 profiles"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workdir := filepath.Join(tmp, "work")
+	ws, err := Init(pdf, InitOptions{Workdir: workdir})
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	profiles := config.Profiles{
+		Translate: config.TranslateProfiles{Default: "cloud", Profiles: map[string]config.TranslateProfile{
+			"cloud": {BaseURL: "https://api.example.com/v1", Model: "big"},
+		}},
+		Speech: config.SpeechProfiles{Profiles: map[string]config.SpeechProfile{
+			"silero": {Backend: config.BackendSilero, Command: "/opt/silero_tts.py"},
+		}},
+	}
+	if err := config.SaveProfiles(workdir, profiles); err != nil {
+		t.Fatal(err)
+	}
+
+	opened, err := Open(ws.Dir, OpenOptions{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if opened.Config.Translate.Model != "big" || opened.Config.Translate.ProfileUsed != "cloud" {
+		t.Errorf("translate = %+v, want the default profile", opened.Config.Translate)
+	}
+	// No speech default and no choice: the book's own engine.
+	if opened.Config.TTS.Backend != config.BackendPiper || opened.Config.TTS.ProfileUsed != "" {
+		t.Errorf("tts = %+v, want the book's own settings", opened.Config.TTS)
+	}
+
+	data, _ := os.ReadFile(ws.ConfigPath())
+	updated, err := config.UpdateYAML(data, map[string]any{"tts.profile": "gone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(ws.ConfigPath(), updated, 0o644)
+	if _, err := Open(ws.Dir, OpenOptions{}); err == nil || !strings.Contains(err.Error(), `"gone"`) {
+		t.Errorf("Open with a missing profile = %v", err)
 	}
 }

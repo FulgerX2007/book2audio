@@ -4,6 +4,7 @@
 package webui
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -56,7 +57,9 @@ type Server struct {
 
 	mu   sync.Mutex
 	jobs map[string]*job // by slug
-	wg   sync.WaitGroup
+	// profilesMu serialises changes of the profiles file.
+	profilesMu sync.Mutex
+	wg         sync.WaitGroup
 }
 
 // slugRe is the form of a working folder name accepted in a URL.
@@ -76,6 +79,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/books/{slug}/run", s.startRun)
 	mux.HandleFunc("POST /api/books/{slug}/stop", s.stopRun)
 	mux.HandleFunc("POST /api/books/{slug}/settings", s.saveSettings)
+	mux.HandleFunc("GET /api/profiles", s.listProfiles)
+	mux.HandleFunc("POST /api/profiles/{kind}", s.saveProfile)
+	mux.HandleFunc("POST /api/profiles/{kind}/delete", s.deleteProfile)
 	mux.HandleFunc("GET /api/books/{slug}/out/{name}", s.download)
 	return s.guard(mux)
 }
@@ -161,6 +167,23 @@ type bookJSON struct {
 
 // settingsJSON are the book settings that can be changed in the browser.
 type settingsJSON struct {
+	// Profile and TTSProfile are the book's choice of shared profiles: a
+	// profile name, "" for the default of the books directory, or "own" for
+	// the settings below. ProfileUsed and TTSProfileUsed name the profiles
+	// in effect ("" when the book's own settings are), and the lists are
+	// what there is to choose from.
+	Profile           string   `json:"profile"`
+	TTSProfile        string   `json:"ttsProfile"`
+	ProfileUsed       string   `json:"profileUsed"`
+	TTSProfileUsed    string   `json:"ttsProfileUsed"`
+	TranslateProfiles []string `json:"translateProfiles"`
+	TranslateDefault  string   `json:"translateDefault"`
+	SpeechProfiles    []string `json:"speechProfiles"`
+	SpeechDefault     string   `json:"speechDefault"`
+	// EffModel and EffEngine are the model and the speech engine in effect.
+	EffModel  string `json:"effModel"`
+	EffEngine string `json:"effEngine"`
+
 	// Translate is false for a book read in its own language: the target
 	// language is then the source language and no model is used.
 	Translate  bool   `json:"translate"`
@@ -186,22 +209,56 @@ type settingsJSON struct {
 	AutoVoice  string   `json:"autoVoice"` // the Piper voice that would be downloaded, if any
 }
 
-func settingsOf(cfg config.Config) settingsJSON {
+// settingsOf describes a book: own is its config.yaml as written, eff the
+// same with the shared profiles applied.
+func settingsOf(own, eff config.Config, profiles config.Profiles) settingsJSON {
 	return settingsJSON{
-		Translate:  !cfg.SameLanguage(),
-		SourceLang: cfg.SourceLang,
-		TargetLang: cfg.TargetLang,
-		Model:      cfg.Translate.Model,
-		BaseURL:    cfg.Translate.BaseURL,
-		APIKeyEnv:  cfg.Translate.APIKeyEnv,
-		Headers:    formatHeaders(cfg.Translate.Headers),
-		KeySet:     cfg.Translate.APIKeyEnv != "" && os.Getenv(cfg.Translate.APIKeyEnv) != "",
-		TTSBackend: cfg.TTS.Backend,
-		TTSCommand: cfg.TTS.Command,
-		TTSArgs:    strings.Join(cfg.TTS.Args, " "),
+		Profile:           own.Translate.Profile,
+		TTSProfile:        own.TTS.Profile,
+		ProfileUsed:       eff.Translate.ProfileUsed,
+		TTSProfileUsed:    eff.TTS.ProfileUsed,
+		TranslateProfiles: profiles.Translate.Names(),
+		TranslateDefault:  profiles.Translate.Default,
+		SpeechProfiles:    profiles.Speech.Names(),
+		SpeechDefault:     profiles.Speech.Default,
+		EffModel:          eff.Translate.Model,
+		EffEngine:         eff.TTS.Backend,
+
+		Translate:  !own.SameLanguage(),
+		SourceLang: own.SourceLang,
+		TargetLang: own.TargetLang,
+		Model:      own.Translate.Model,
+		BaseURL:    own.Translate.BaseURL,
+		APIKeyEnv:  own.Translate.APIKeyEnv,
+		Headers:    formatHeaders(own.Translate.Headers),
+		KeySet:     keySet(eff.Translate.APIKeyEnv),
+		TTSBackend: own.TTS.Backend,
+		TTSCommand: own.TTS.Command,
+		TTSArgs:    strings.Join(own.TTS.Args, " "),
 		Backends:   []string{config.BackendPiper, config.BackendSilero},
-		AutoVoice:  autoVoice(cfg),
+		AutoVoice:  autoVoice(eff),
 	}
+}
+
+// keySet tells whether the environment variable with an API key has a value.
+func keySet(name string) bool { return name != "" && os.Getenv(name) != "" }
+
+// bookSettings reads the settings of a book: its own config and the
+// profiles in effect.
+func (s *Server) bookSettings(configPath string) (settingsJSON, error) {
+	own, err := config.Load(configPath)
+	if err != nil {
+		return settingsJSON{}, err
+	}
+	profiles, err := config.LoadProfiles(s.Workdir)
+	if err != nil {
+		return settingsJSON{}, err
+	}
+	eff := own
+	if err := profiles.Apply(&eff, s.Workdir); err != nil {
+		return settingsJSON{}, err
+	}
+	return settingsOf(own, eff, profiles), nil
 }
 
 // formatHeaders renders headers one "name: value" per line, sorted.
@@ -293,9 +350,14 @@ func (s *Server) bookDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusOf(err), err)
 		return
 	}
+	settings, err := s.bookSettings(ws.ConfigPath())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	d := detailJSON{
 		bookJSON:   s.book(slug, ws, st),
-		Settings:   settingsOf(ws.Config),
+		Settings:   settings,
 		Dir:        ws.Dir,
 		ConfigPath: ws.ConfigPath(),
 		SourceLang: ws.Config.SourceLang,
@@ -390,9 +452,18 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	profiles, err := config.LoadProfiles(s.Workdir)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	trChoice, ttsChoice := strings.TrimSpace(req.Profile), strings.TrimSpace(req.TTSProfile)
+	// The book's own settings are needed only where no profile is in effect.
+	ownTranslate, ownSpeech := profiles.TranslateFor(trChoice) == "", profiles.SpeechFor(ttsChoice) == ""
+
 	source, target := strings.TrimSpace(req.SourceLang), strings.TrimSpace(req.TargetLang)
-	set := map[string]any{"source_lang": source}
-	if backend := strings.TrimSpace(req.TTSBackend); backend != "" {
+	set := map[string]any{"source_lang": source, "translate.profile": trChoice, "tts.profile": ttsChoice}
+	if backend := strings.TrimSpace(req.TTSBackend); backend != "" && ownSpeech {
 		// A request without the speech fields leaves the engine as it is.
 		command := strings.TrimSpace(req.TTSCommand)
 		if command == "" {
@@ -412,26 +483,28 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 			err = errors.New("choose the language to translate into")
 		case probe.SameLanguage():
 			err = errors.New("the language to translate into is the same as the language of the book: choose another one or turn translation off")
-		case model == "":
-			err = errors.New("name the model that translates")
+		case model == "" && ownTranslate:
+			err = errors.New("name the model that translates, or choose a translation profile")
 		}
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 		set["target_lang"] = target
-		set["translate.model"] = model
-		// An empty address is never valid: it means "leave it as it is".
-		if base := strings.TrimSpace(req.BaseURL); base != "" {
-			set["translate.base_url"] = base
+		if ownTranslate {
+			set["translate.model"] = model
+			// An empty address is never valid: it means "leave it as it is".
+			if base := strings.TrimSpace(req.BaseURL); base != "" {
+				set["translate.base_url"] = base
+			}
+			set["translate.api_key_env"] = strings.TrimSpace(req.APIKeyEnv)
+			headers, err := parseHeaders(req.Headers)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			set["translate.headers"] = headers
 		}
-		set["translate.api_key_env"] = strings.TrimSpace(req.APIKeyEnv)
-		headers, err := parseHeaders(req.Headers)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
-		}
-		set["translate.headers"] = headers
 	} else {
 		// A book read in its own language; the model settings stay as they are.
 		set["target_lang"] = source
@@ -448,17 +521,25 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	// The chosen profiles must exist and make a valid config with the book.
+	if cfg, err := config.Parse(bytes.NewReader(updated)); err == nil {
+		err = profiles.Apply(&cfg, s.Workdir)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
 	if err := workspace.WriteFileAtomic(path, updated, 0o644); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	s.Log.Info("settings saved", "book", slug, "translate", req.Translate)
-	cfg, err := config.Load(path)
+	settings, err := s.bookSettings(path)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, settingsOf(cfg))
+	writeJSON(w, http.StatusOK, settings)
 }
 
 func (s *Server) addBook(w http.ResponseWriter, r *http.Request) {
