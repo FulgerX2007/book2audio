@@ -88,6 +88,22 @@ func ReadStatus(ws *workspace.Workspace) (Status, error) {
 		}
 	}
 	st.Chapters = chapterStatuses(ws)
+	// The manifest knows a chunk or a segment only once it is finished or
+	// has failed, so while a stage is running its count of units is the
+	// work done so far. The planned lists of the chapters give the total.
+	var chunks, segments int
+	for _, c := range st.Chapters {
+		chunks += c.Chunks
+		segments += c.Segments
+	}
+	for i := range st.Stages {
+		switch s := &st.Stages[i]; s.Name {
+		case StageTranslate:
+			s.Counts.Total = max(s.Counts.Total, chunks)
+		case StageSynth:
+			s.Counts.Total = max(s.Counts.Total, segments)
+		}
+	}
 	for _, stage := range editableStages {
 		for _, id := range m.UnitIDs(stage) {
 			edited, err := m.Edited(stage, id)

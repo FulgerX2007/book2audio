@@ -486,6 +486,17 @@ func TestStatusChapters(t *testing.T) {
 		if done == 0 || done >= total {
 			t.Errorf("done = %d of %d, want a partial count", done, total)
 		}
+		// The stage line counts the planned chunks too, not only the ones
+		// the manifest has recorded so far: otherwise a running stage
+		// would look finished.
+		for _, s := range st.Stages {
+			if s.Name == StageTranslate && (s.Counts.Total != total || s.Counts.Done != done) {
+				t.Errorf("translate stage = %+v, want %d done of %d", s.Counts, done, total)
+			}
+			if s.Name == StageSynth && s.Counts.Total != 0 {
+				t.Errorf("synth stage = %+v, want nothing planned yet", s.Counts)
+			}
+		}
 		var out bytes.Buffer
 		st.Write(&out)
 		if strings.Contains(out.String(), "/?") {
